@@ -45,6 +45,15 @@ xiezhi doctor
 xiezhi index --full
 ```
 
+If the directory is not a git repository yet, `xiezhi init` will initialize one for you.
+
+If the repository has no commit yet, you can still run `xiezhi bootstrap`, `xiezhi index`, and `xiezhi plan`, but `xiezhi task run` will require a baseline commit first:
+
+```bash
+git add .
+git commit -m "chore: initial baseline"
+```
+
 ## Recommended Presets
 
 - `local-fast`

@@ -4,10 +4,11 @@ import { describe, expect, it } from "vitest"
 
 import { runIndexCommand } from "../src/commands/index.js"
 import { runInit } from "../src/commands/init.js"
-import { runPlanCommand } from "../src/commands/plan.js"
+import { runBootstrapCommand, runPlanCommand } from "../src/commands/plan.js"
 import { runTaskRetryCommand, runTaskRunCommand } from "../src/commands/task.js"
+import { XieZhiError } from "../src/core/errors.js"
 import { openDatabaseConnection } from "../src/db/client.js"
-import { createTempTsRepo } from "./support/git-fixture.js"
+import { createTempDir, createTempTsRepo } from "./support/git-fixture.js"
 
 describe("task run command", () => {
   it("creates a task worktree and persists a patch record", async () => {
@@ -82,5 +83,16 @@ describe("task run command", () => {
     } finally {
       sqlite.close()
     }
+  }, 15000)
+
+  it("requires a baseline commit before running tasks in an auto-initialized repo", async () => {
+    const cwd = await createTempDir("xiezhi-task-run-unborn-")
+    await runInit(cwd)
+    const plan = await runBootstrapCommand(cwd, "build a note taking app")
+
+    await expect(runTaskRunCommand(cwd, plan.tasks[0]!.id, "opencode")).rejects.toMatchObject({
+      code: "CLI_USAGE_ERROR",
+      hint: expect.stringContaining("initial baseline")
+    } satisfies Partial<XieZhiError>)
   }, 15000)
 })

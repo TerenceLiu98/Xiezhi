@@ -6,7 +6,7 @@ import { detectPackageManager } from "../config/defaults.js"
 import { loadProjectConfig } from "../config/loader.js"
 import { getConfigPath, getDatabasePath, getXieZhiDir } from "../config/paths.js"
 import { XieZhiError } from "../core/errors.js"
-import { runGit } from "../core/git.js"
+import { runGit, tryRunGit, UNBORN_HEAD } from "../core/git.js"
 import { assertDatabaseInitialized } from "../db/client.js"
 import { detectRuntimeAvailability } from "../runtime/shared/capabilities.js"
 import type { RuntimeName } from "../runtime/shared/contracts.js"
@@ -69,6 +69,19 @@ function checkNodeVersion() {
 async function checkGitRepo(cwd: string) {
   try {
     const result = await runGit(["rev-parse", "--show-toplevel"], cwd)
+    const headResult = await tryRunGit(["rev-parse", "HEAD"], cwd)
+    const headCommit = headResult?.stdout.trim() || UNBORN_HEAD
+
+    if (headCommit === UNBORN_HEAD) {
+      return createCheck({
+        id: "git",
+        title: "Git repository",
+        status: "warning",
+        summary: `Repository root detected at ${result.stdout.trim()}, but there is no baseline commit yet.`,
+        nextStep: "Create an initial commit before `xiezhi task run`, for example `git add . && git commit -m \"chore: initial baseline\"`."
+      })
+    }
+
     return createCheck({
       id: "git",
       title: "Git repository",
@@ -81,7 +94,7 @@ async function checkGitRepo(cwd: string) {
       title: "Git repository",
       status: "failed",
       summary: "This directory is not a usable git repository for XieZhi.",
-      nextStep: "Run `xiezhi` inside a git repository or initialize one with `git init` first."
+      nextStep: "Run `xiezhi init` here and XieZhi will initialize a git repository if needed."
     })
   }
 }

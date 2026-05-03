@@ -73,6 +73,8 @@ The first version is intentionally CLI-first and local-first.
 
 ## Example Workflow
 
+For an existing TypeScript repo:
+
 ```bash
 xiezhi init
 xiezhi index
@@ -83,6 +85,15 @@ xiezhi task run task.add_create_invite_api --runtime opencode
 xiezhi verify <patch-id>
 xiezhi review <patch-id>
 xiezhi patch accept <patch-id>
+```
+
+For a greenfield app idea:
+
+```bash
+xiezhi init
+xiezhi bootstrap "build a bookkeeping app"
+xiezhi dag show
+xiezhi task list
 ```
 
 Example review output:
@@ -99,7 +110,48 @@ Warnings:
   - missing test: invitation expiry
 ```
 
-## Demo: Budgeting App
+## Demo: Bootstrap a Bookkeeping App
+
+If the user is starting from a one-line product idea instead of an existing codebase change, XieZhi now has a separate bootstrap path:
+
+```bash
+xiezhi init
+xiezhi bootstrap "帮我做一个记账软件"
+xiezhi dag show
+xiezhi task list
+```
+
+That produces a starter plan without requiring `xiezhi index` first. A typical bootstrap output is:
+
+```text
+Feature: Bookkeeping app
+
+Tasks:
+  1. Define skeleton for bookkeeping app
+  2. Scaffold bookkeeping app shell and persistence
+  3. Implement first bookkeeping flow
+  4. Verify bookkeeping app bootstrap slice
+```
+
+The starter file scope is intentionally narrow, for example:
+
+```text
+package.json
+tsconfig.json
+src/app.tsx
+src/lib/storage.ts
+src/domain/ledger.ts
+src/features/transactions/transaction-form.tsx
+src/features/transactions/transaction-list.tsx
+src/features/categories/category-select.tsx
+src/features/budgets/monthly-budget.ts
+tests/transactions.test.ts
+tests/monthly-budget.test.ts
+```
+
+Once that bootstrap plan exists, the user can run one task at a time with the normal controlled patch loop.
+
+## Demo: Budgeting App Increment
 
 Imagine a user is building a personal finance app and wants to add a monthly budget alert:
 
@@ -205,6 +257,8 @@ pnpm build
 pnpm link --global
 xiezhi doctor
 ```
+
+`xiezhi init` can now initialize a git repository for a plain directory. If the repo still has no commit yet, XieZhi will let you `bootstrap`, `index`, and `plan`, but it will ask for a baseline commit before `xiezhi task run`.
 
 More detailed install and preset guidance lives in [docs/install.md](/Users/terenceliu/Downloads/development/xiezhi/docs/install.md:1).
 

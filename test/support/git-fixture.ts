@@ -4,8 +4,12 @@ import path from "node:path"
 
 import { execa } from "execa"
 
+export async function createTempDir(prefix: string) {
+  return await mkdtemp(path.join(tmpdir(), prefix))
+}
+
 export async function createTempGitRepo(prefix: string) {
-  const cwd = await mkdtemp(path.join(tmpdir(), prefix))
+  const cwd = await createTempDir(prefix)
 
   await execa("git", ["init", "-b", "main"], { cwd })
   await execa("git", ["config", "user.name", "XieZhi Test"], { cwd })

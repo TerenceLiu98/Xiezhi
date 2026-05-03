@@ -27,8 +27,9 @@ This directory contains the implementation task backlog derived from the PRD and
 8. [task-008-release-workflow.md](/Users/terenceliu/Downloads/development/xiezhi/docs/tasks/task-008-release-workflow.md:1)
 9. [task-009-control-loop-hardening.md](/Users/terenceliu/Downloads/development/xiezhi/docs/tasks/task-009-control-loop-hardening.md:1)
 10. [task-010-semantic-control-and-planning.md](/Users/terenceliu/Downloads/development/xiezhi/docs/tasks/task-010-semantic-control-and-planning.md:1)
-11. [../install.md](/Users/terenceliu/Downloads/development/xiezhi/docs/install.md:1)
-12. [../presets/README.md](/Users/terenceliu/Downloads/development/xiezhi/docs/presets/README.md:1)
+11. [task-011-supervisor-subagent-orchestration.md](/Users/terenceliu/Downloads/development/xiezhi/docs/tasks/task-011-supervisor-subagent-orchestration.md:1)
+12. [../install.md](/Users/terenceliu/Downloads/development/xiezhi/docs/install.md:1)
+13. [../presets/README.md](/Users/terenceliu/Downloads/development/xiezhi/docs/presets/README.md:1)
 
 ## How to Use This Backlog
 

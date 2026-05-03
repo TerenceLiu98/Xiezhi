@@ -8,6 +8,7 @@ import { bootstrapDatabase } from "../db/bootstrap.js"
 import { openDatabaseConnection } from "../db/client.js"
 import { drizzle } from "drizzle-orm/better-sqlite3"
 import * as schema from "../db/schema.js"
+import { ensureGitRepository } from "../core/git.js"
 import { RepositoryMetadataService, type RepositoryMetadata } from "../services/repository-metadata-service.js"
 
 export type InitResult = {
@@ -18,6 +19,7 @@ export type InitResult = {
   preset: ConfigPresetName | "default"
   createdConfig: boolean
   appliedMigrations: string[]
+  createdGitRepository: boolean
   repository: RepositoryMetadata
 }
 
@@ -35,6 +37,8 @@ export async function runInit(cwd: string, options?: { preset?: ConfigPresetName
     createDefaultConfig(cwd, options?.preset)
   }
 
+  const gitSetup = await ensureGitRepository(cwd)
+
   const sqlite = openDatabaseConnection(cwd)
 
   try {
@@ -50,6 +54,7 @@ export async function runInit(cwd: string, options?: { preset?: ConfigPresetName
       preset,
       createdConfig,
       appliedMigrations: result.appliedMigrations,
+      createdGitRepository: gitSetup.initialized,
       repository
     }
   } finally {

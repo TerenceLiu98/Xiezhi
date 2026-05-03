@@ -68,6 +68,23 @@ export type CreatePlanResult = {
   }>
 }
 
+export type BootstrapPlanResult = CreatePlanResult & {
+  template: string
+  starterFiles: string[]
+}
+
+type BootstrapBlueprint = {
+  title: string
+  template: string
+  requirements: string[]
+  foundationFiles: string[]
+  implementationFiles: string[]
+  testFiles: string[]
+  relatedSymbols: string[]
+  rationale: string[]
+  verticalSliceLabel: string
+}
+
 function unique<T>(values: T[]) {
   return [...new Set(values)]
 }
@@ -251,6 +268,97 @@ function summarizeScope(codeFiles: string[], testFiles: string[]) {
   return segments.join(", ")
 }
 
+function inferBootstrapBlueprint(request: string): BootstrapBlueprint {
+  const normalized = request.trim().replace(/\s+/g, " ")
+  const lower = normalized.toLowerCase()
+  const isBookkeeping =
+    /记账|预算|支出|收入|账单|财务/.test(normalized) ||
+    ["bookkeeping", "budget", "expense", "ledger", "finance", "accounting"].some((keyword) => lower.includes(keyword))
+
+  if (isBookkeeping) {
+    return {
+      title: "Bookkeeping app",
+      template: "greenfield-react-ts",
+      requirements: [
+        "Users can record income and expenses.",
+        "Transactions are grouped by category and month.",
+        "A first budgeting slice exists so future alerts and reports have a home."
+      ],
+      foundationFiles: [
+        "package.json",
+        "tsconfig.json",
+        "src/app.tsx",
+        "src/lib/storage.ts",
+        "src/domain/ledger.ts"
+      ],
+      implementationFiles: [
+        "src/features/dashboard/dashboard-page.tsx",
+        "src/features/transactions/transaction-form.tsx",
+        "src/features/transactions/transaction-list.tsx",
+        "src/features/categories/category-select.tsx",
+        "src/features/budgets/monthly-budget.ts",
+        "src/domain/ledger.ts"
+      ],
+      testFiles: [
+        "tests/transactions.test.ts",
+        "tests/monthly-budget.test.ts"
+      ],
+      relatedSymbols: [
+        "LedgerEntry",
+        "TransactionForm",
+        "TransactionList",
+        "CategorySelect",
+        "MonthlyBudget",
+        "saveTransaction",
+        "calculateMonthlyBudgetStatus"
+      ],
+      rationale: [
+        "The request reads like a greenfield bookkeeping product instead of a change to an existing codebase.",
+        "Bootstrap should create a narrow starter slice around transactions, categories, budgets, and local persistence."
+      ],
+      verticalSliceLabel: "bookkeeping flow"
+    }
+  }
+
+  return {
+    title: sentenceCase(normalized),
+    template: "greenfield-react-ts",
+    requirements: [
+      `${sentenceCase(normalized)} has a visible app shell and one working end-to-end flow.`,
+      "Core domain state is captured in a small, named model layer.",
+      "The first slice is testable without requiring a full product build-out."
+    ],
+    foundationFiles: [
+      "package.json",
+      "tsconfig.json",
+      "src/app.tsx",
+      "src/lib/storage.ts",
+      "src/domain/models.ts"
+    ],
+    implementationFiles: [
+      "src/features/home/home-page.tsx",
+      "src/features/core/core-form.tsx",
+      "src/features/core/core-service.ts",
+      "src/domain/models.ts"
+    ],
+    testFiles: [
+      "tests/app.test.ts",
+      "tests/core-flow.test.ts"
+    ],
+    relatedSymbols: [
+      "AppShell",
+      "AppModel",
+      "CoreService",
+      "saveRecord"
+    ],
+    rationale: [
+      "No indexed code exists yet, so bootstrap should start from a thin app shell plus one vertical slice.",
+      "The starter file set stays intentionally small so later tasks can expand scope feature by feature."
+    ],
+    verticalSliceLabel: "core app flow"
+  }
+}
+
 function safeJsonParse<T>(value: string | null, fallback: T): T {
   if (!value) {
     return fallback
@@ -270,7 +378,7 @@ export class PlanningService {
 
     if (nodes.length === 0) {
       throw new XieZhiError("CLI_USAGE_ERROR", "No code index found for this repository.", {
-        hint: "Run `xiezhi index --full` before planning so XieZhi can infer scope."
+        hint: "Run `xiezhi index --full` before planning an existing repo, or use `xiezhi bootstrap \"build a budgeting app\"` to start a greenfield app."
       })
     }
 
@@ -333,7 +441,7 @@ export class PlanningService {
       .map((candidate) => candidate.path)
       .slice(0, 2)
 
-  const relatedSymbols = normalizeRelatedSymbols(candidates.flatMap((candidate) => candidate.symbols)).slice(0, 8)
+    const relatedSymbols = normalizeRelatedSymbols(candidates.flatMap((candidate) => candidate.symbols)).slice(0, 8)
 
     return {
       codeFiles: codeFiles.length > 0 ? codeFiles : buildScopeFallback(nodes).codeFiles,
@@ -423,6 +531,102 @@ export class PlanningService {
         relatedSymbols: input.scope.relatedSymbols,
         scopeSummary: summarizeScope(defaultCodeFiles.slice(0, 2), input.scope.testFiles.slice(0, 2)),
         rationale: input.scope.rationale
+      }
+    ]
+  }
+
+  private buildBootstrapTasks(input: {
+    featureId: string
+    title: string
+    requirements: string[]
+    blueprint: BootstrapBlueprint
+    packageManager: string
+    packageScripts: Record<string, string>
+  }): PlannedTask[] {
+    const starterFiles = unique([...input.blueprint.foundationFiles, ...input.blueprint.implementationFiles])
+    const preferredScripts = ["typecheck", "test", "lint", "build"].filter((scriptName) => {
+      return Boolean(input.packageScripts[scriptName])
+    })
+    const foundationCommands = buildRecommendedCommands(input.packageManager, preferredScripts.slice(0, 2))
+    const implementationCommands = buildRecommendedCommands(input.packageManager, preferredScripts.slice(0, 3))
+    const verificationCommands = buildRecommendedCommands(
+      input.packageManager,
+      preferredScripts.filter((scriptName) => scriptName === "test" || scriptName === "typecheck" || scriptName === "lint").slice(0, 3)
+    )
+    const defineTaskId = createId()
+    const scaffoldTaskId = createId()
+    const implementTaskId = createId()
+    const verifyTaskId = createId()
+
+    return [
+      {
+        taskId: defineTaskId,
+        dagNodeId: stableId("dag", `${input.featureId}:task:define`),
+        title: `Define skeleton for ${input.title}`,
+        body: "Lock the first domain model, app shell, and starter file map before wider implementation begins.",
+        status: "ready",
+        dependsOnTaskIds: [],
+        allowedFiles: unique(["README.md", ...input.blueprint.foundationFiles.slice(0, 4)]),
+        forbiddenFiles: [".xiezhi/"],
+        acceptance: [
+          `The first build slice for ${input.title.toLowerCase()} is explicit and bounded.`,
+          "Foundation files are named before deeper feature work starts."
+        ],
+        recommendedCommands: foundationCommands,
+        relatedSymbols: input.blueprint.relatedSymbols,
+        scopeSummary: summarizeScope(input.blueprint.foundationFiles.slice(0, 4), []),
+        rationale: input.blueprint.rationale
+      },
+      {
+        taskId: scaffoldTaskId,
+        dagNodeId: stableId("dag", `${input.featureId}:task:scaffold`),
+        title: `Scaffold ${input.title} shell and persistence`,
+        body: "Create the app shell, persistence seam, and domain model so feature work has a stable base.",
+        status: "draft",
+        dependsOnTaskIds: [defineTaskId],
+        allowedFiles: input.blueprint.foundationFiles,
+        forbiddenFiles: [".xiezhi/"],
+        acceptance: [
+          `${input.title} has a visible shell and persistence boundary.`,
+          "The first domain model is committed in code."
+        ],
+        recommendedCommands: implementationCommands,
+        relatedSymbols: input.blueprint.relatedSymbols,
+        scopeSummary: summarizeScope(input.blueprint.foundationFiles, []),
+        rationale: input.blueprint.rationale
+      },
+      {
+        taskId: implementTaskId,
+        dagNodeId: stableId("dag", `${input.featureId}:task:implement`),
+        title: `Implement first ${input.blueprint.verticalSliceLabel} for ${input.title}`,
+        body: "Build one real end-to-end slice so the app becomes usable before broadening into adjacent features.",
+        status: "draft",
+        dependsOnTaskIds: [scaffoldTaskId],
+        allowedFiles: unique([...starterFiles, ...input.blueprint.testFiles.slice(0, 1)]),
+        forbiddenFiles: [".xiezhi/"],
+        acceptance: buildAcceptance(input.title, input.requirements).slice(0, 3),
+        recommendedCommands: implementationCommands,
+        relatedSymbols: input.blueprint.relatedSymbols,
+        scopeSummary: summarizeScope(starterFiles, input.blueprint.testFiles.slice(0, 1)),
+        rationale: input.blueprint.rationale
+      },
+      {
+        taskId: verifyTaskId,
+        dagNodeId: stableId("dag", `${input.featureId}:task:verify`),
+        title: `Verify ${input.title} bootstrap slice`,
+        body: "Add or update tests around the initial flow and confirm the starter slice is stable enough to iterate on.",
+        status: "draft",
+        dependsOnTaskIds: [implementTaskId],
+        allowedFiles: unique([...input.blueprint.testFiles, ...input.blueprint.implementationFiles.slice(0, 2)]),
+        forbiddenFiles: [".xiezhi/"],
+        acceptance: [
+          `Coverage exists for the initial ${input.blueprint.verticalSliceLabel}.`,
+          "The bootstrap slice is safe to build on in later tasks."
+        ],
+        recommendedCommands: verificationCommands.length > 0 ? verificationCommands : implementationCommands,
+        relatedSymbols: input.blueprint.relatedSymbols,
+        scopeSummary: summarizeScope(input.blueprint.implementationFiles.slice(0, 2), input.blueprint.testFiles),
+        rationale: input.blueprint.rationale
       }
     ]
   }
@@ -606,6 +810,70 @@ export class PlanningService {
     return { nodes, edges }
   }
 
+  private persistPlan(input: {
+    featureId: string
+    title: string
+    featureDescription: string
+    featureStatus: FeatureStatus
+    createdAt: string
+    nodes: PlannedDagNode[]
+    edges: PlannedDagEdge[]
+    tasks: PlannedTask[]
+  }) {
+    this.db.transaction((tx) => {
+      tx.insert(featuresTable)
+        .values({
+          id: input.featureId,
+          title: input.title,
+          description: input.featureDescription,
+          status: input.featureStatus,
+          createdAt: input.createdAt,
+          updatedAt: input.createdAt
+        })
+        .run()
+
+      tx.insert(dagNodesTable).values(input.nodes).run()
+      tx.insert(dagEdgesTable).values(input.edges).run()
+      tx.insert(tasksTable)
+        .values(
+          input.tasks.map((task) => {
+            const intentIr: IntentIr = {
+              version: "v1",
+              goal: task.title,
+              summary: task.body,
+              allowedFiles: task.allowedFiles,
+              forbiddenFiles: task.forbiddenFiles,
+              relatedSymbols: normalizeRelatedSymbols(task.relatedSymbols),
+              acceptance: task.acceptance,
+              recommendedCommands: task.recommendedCommands,
+              rationale: task.rationale
+            }
+            const policy: ExecutionPolicy = {
+              taskId: task.taskId,
+              allowedFiles: task.allowedFiles,
+              forbiddenFiles: task.forbiddenFiles,
+              allowedWriteRoots: ["."],
+              allowedTools: ["read", "edit", "bash"],
+              envAllowlist: [],
+              deniedCommands: ["git reset --hard", "git checkout --"]
+            }
+
+            return {
+              id: task.taskId,
+              featureId: input.featureId,
+              dagNodeId: task.dagNodeId,
+              status: task.status,
+              intentIrJson: JSON.stringify(intentIr),
+              policyJson: JSON.stringify(policy),
+              createdAt: input.createdAt,
+              updatedAt: input.createdAt
+            }
+          })
+        )
+        .run()
+    })
+  }
+
   async createPlan(cwd: string, request: string): Promise<CreatePlanResult> {
     const repositoryService = new RepositoryMetadataService(this.db)
     const repository = await repositoryService.refreshForCwd(cwd)
@@ -634,57 +902,15 @@ export class PlanningService {
       createdAt
     })
 
-    this.db.transaction((tx) => {
-      tx.insert(featuresTable)
-        .values({
-          id: featureId,
-          title: normalized.title,
-          description: featureDescription,
-          status: featureStatus,
-          createdAt,
-          updatedAt: createdAt
-        })
-        .run()
-
-      tx.insert(dagNodesTable).values(nodes).run()
-      tx.insert(dagEdgesTable).values(edges).run()
-      tx.insert(tasksTable)
-        .values(
-          tasks.map((task) => {
-            const intentIr: IntentIr = {
-              version: "v1",
-              goal: task.title,
-              summary: task.body,
-              allowedFiles: task.allowedFiles,
-              forbiddenFiles: task.forbiddenFiles,
-              relatedSymbols: normalizeRelatedSymbols(task.relatedSymbols),
-              acceptance: task.acceptance,
-              recommendedCommands: task.recommendedCommands,
-              rationale: task.rationale
-            }
-            const policy: ExecutionPolicy = {
-              taskId: task.taskId,
-              allowedFiles: task.allowedFiles,
-              forbiddenFiles: task.forbiddenFiles,
-              allowedWriteRoots: ["."],
-              allowedTools: ["read", "edit", "bash"],
-              envAllowlist: [],
-              deniedCommands: ["git reset --hard", "git checkout --"]
-            }
-
-            return {
-              id: task.taskId,
-              featureId,
-              dagNodeId: task.dagNodeId,
-              status: task.status,
-              intentIrJson: JSON.stringify(intentIr),
-              policyJson: JSON.stringify(policy),
-              createdAt,
-              updatedAt: createdAt
-            }
-          })
-        )
-        .run()
+    this.persistPlan({
+      featureId,
+      title: normalized.title,
+      featureDescription,
+      featureStatus,
+      createdAt,
+      nodes,
+      edges,
+      tasks
     })
 
     return {
@@ -696,6 +922,74 @@ export class PlanningService {
       taskCount: tasks.length,
       nodeCount: nodes.length,
       edgeCount: edges.length,
+      tasks: tasks.map((task) => ({
+        id: task.taskId,
+        title: task.title,
+        status: task.status,
+        dependsOnTaskIds: task.dependsOnTaskIds,
+        allowedFiles: task.allowedFiles,
+        acceptance: task.acceptance
+      }))
+    }
+  }
+
+  async createBootstrapPlan(cwd: string, request: string): Promise<BootstrapPlanResult> {
+    const repositoryService = new RepositoryMetadataService(this.db)
+    const repository = await repositoryService.refreshForCwd(cwd)
+    const normalized = normalizeRequest(request)
+    const blueprint = inferBootstrapBlueprint(request)
+    const packageScripts = await loadPackageScripts(repository.rootPath)
+    const featureId = createId()
+    const createdAt = nowIso()
+    const featureStatus: FeatureStatus = "draft"
+    const featureDescription = `Bootstrap plan generated from request: ${sentenceCase(request)}`
+    const scope: InferredScope = {
+      codeFiles: unique([...blueprint.foundationFiles, ...blueprint.implementationFiles]),
+      testFiles: blueprint.testFiles,
+      relatedSymbols: normalizeRelatedSymbols(blueprint.relatedSymbols),
+      candidates: [],
+      rationale: blueprint.rationale
+    }
+    const tasks = this.buildBootstrapTasks({
+      featureId,
+      title: blueprint.title,
+      requirements: unique([...blueprint.requirements, ...normalized.requirements]).slice(0, 4),
+      blueprint,
+      packageManager: repository.packageManager,
+      packageScripts
+    })
+    const { nodes, edges } = this.buildDag({
+      featureId,
+      title: blueprint.title,
+      requirements: unique([...blueprint.requirements, ...normalized.requirements]).slice(0, 4),
+      featureStatus,
+      tasks,
+      scope,
+      createdAt
+    })
+
+    this.persistPlan({
+      featureId,
+      title: blueprint.title,
+      featureDescription,
+      featureStatus,
+      createdAt,
+      nodes,
+      edges,
+      tasks
+    })
+
+    return {
+      status: "planned",
+      request,
+      featureId,
+      title: blueprint.title,
+      featureStatus,
+      taskCount: tasks.length,
+      nodeCount: nodes.length,
+      edgeCount: edges.length,
+      template: blueprint.template,
+      starterFiles: unique([...blueprint.foundationFiles, ...blueprint.implementationFiles, ...blueprint.testFiles]),
       tasks: tasks.map((task) => ({
         id: task.taskId,
         title: task.title,
@@ -813,6 +1107,17 @@ export async function createPlan(cwd: string, request: string) {
     assertDatabaseInitialized(cwd, sqlite)
     const service = new PlanningService(drizzle(sqlite, { schema }))
     return await service.createPlan(cwd, request)
+  } finally {
+    sqlite.close()
+  }
+}
+
+export async function createBootstrapPlan(cwd: string, request: string) {
+  const sqlite = openDatabaseConnection(cwd)
+  try {
+    assertDatabaseInitialized(cwd, sqlite)
+    const service = new PlanningService(drizzle(sqlite, { schema }))
+    return await service.createBootstrapPlan(cwd, request)
   } finally {
     sqlite.close()
   }

@@ -14,7 +14,7 @@ import { OpenCodeRuntime } from "../runtime/opencode/adapter.js"
 import { XieZhiError } from "../core/errors.js"
 import { PatchRecordService } from "./patch-record-service.js"
 import { capturePatchState } from "./patch-state.js"
-import { RepositoryMetadataService } from "./repository-metadata-service.js"
+import { hasUsableHeadCommit, RepositoryMetadataService } from "./repository-metadata-service.js"
 
 type StoredTask = typeof tasksTable.$inferSelect
 
@@ -112,6 +112,11 @@ export class TaskRunService {
     const timeline: TaskRunResult["timeline"] = []
     const repositoryService = new RepositoryMetadataService(this.db)
     const repository = await repositoryService.refreshForCwd(cwd)
+    if (!hasUsableHeadCommit(repository.headCommit)) {
+      throw new XieZhiError("CLI_USAGE_ERROR", "This repository does not have a baseline commit yet.", {
+        hint: "Create an initial commit with `git add . && git commit -m \"chore: initial baseline\"` before running tasks."
+      })
+    }
     timeline.push({
       label: "Repository loaded",
       status: "done",

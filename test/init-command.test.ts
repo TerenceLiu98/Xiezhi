@@ -3,11 +3,13 @@ import path from "node:path"
 
 import Database from "better-sqlite3"
 import { describe, expect, it } from "vitest"
+import { execa } from "execa"
 
 import { loadProjectConfig } from "../src/config/loader.js"
+import { UNBORN_HEAD } from "../src/core/git.js"
 import { getConfigPath, getDatabasePath, getXieZhiDir } from "../src/config/paths.js"
 import { runInit } from "../src/commands/init.js"
-import { createTempGitRepo } from "./support/git-fixture.js"
+import { createTempDir, createTempGitRepo } from "./support/git-fixture.js"
 
 describe("init command", () => {
   it("creates metadata and bootstraps the sqlite database", async () => {
@@ -43,5 +45,17 @@ describe("init command", () => {
     expect(result.preset).toBe("local-fast")
     expect(config.runtime.default).toBe("claude")
     expect(config.policy.denyCommands).toEqual(["git push", "git commit", "rm -rf *"])
+  })
+
+  it("initializes git metadata when run in a plain directory", async () => {
+    const cwd = await createTempDir("xiezhi-init-plain-")
+
+    const result = await runInit(cwd)
+    const gitTopLevel = await execa("git", ["rev-parse", "--show-toplevel"], { cwd })
+
+    expect(result.createdGitRepository).toBe(true)
+    expect(result.repository.rootPath).toBe(await realpath(cwd))
+    expect(result.repository.headCommit).toBe(UNBORN_HEAD)
+    expect(gitTopLevel.stdout.trim()).toBe(await realpath(cwd))
   })
 })

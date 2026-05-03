@@ -9,7 +9,7 @@ import * as schema from "../db/schema.js"
 import { repositoriesTable } from "../db/schema.js"
 import { stableId } from "../core/ids.js"
 import { nowIso } from "../core/time.js"
-import { runGit } from "../core/git.js"
+import { runGit, tryRunGit, UNBORN_HEAD } from "../core/git.js"
 
 export type RepositoryMetadata = {
   id: string
@@ -23,19 +23,27 @@ export type RepositoryMetadata = {
   updatedAt: string
 }
 
+export function hasUsableHeadCommit(headCommit: string) {
+  return Boolean(headCommit) && headCommit !== UNBORN_HEAD
+}
+
 async function inspectRepository(cwd: string) {
   const rootPathRaw = (await runGit(["rev-parse", "--show-toplevel"], cwd)).stdout.trim()
   const gitDirRaw = (await runGit(["rev-parse", "--absolute-git-dir"], cwd)).stdout.trim()
-  const headCommit = (await runGit(["rev-parse", "HEAD"], cwd)).stdout.trim()
-  const branchResult = await runGit(["rev-parse", "--abbrev-ref", "HEAD"], cwd)
+  const headCommitResult = await tryRunGit(["rev-parse", "HEAD"], cwd)
+  const branchResult =
+    (await tryRunGit(["symbolic-ref", "--quiet", "--short", "HEAD"], cwd)) ??
+    (await tryRunGit(["rev-parse", "--abbrev-ref", "HEAD"], cwd))
   const statusResult = await runGit(["status", "--porcelain"], cwd)
   const rootPath = await realpath(rootPathRaw)
   const gitDir = await realpath(gitDirRaw)
+  const headCommit = headCommitResult?.stdout.trim() || UNBORN_HEAD
+  const currentBranch = branchResult?.stdout.trim() || null
 
   return {
     rootPath,
     gitDir,
-    currentBranch: branchResult.stdout.trim() === "HEAD" ? null : branchResult.stdout.trim(),
+    currentBranch: currentBranch === "HEAD" ? null : currentBranch,
     headCommit,
     isDirty: statusResult.stdout.trim().length > 0,
     packageManager: detectPackageManager(rootPath)

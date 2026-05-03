@@ -35,6 +35,7 @@ init
 | 8 | Release Workflow | external alpha onboarding, reports, and CI guardrails | a new team can install, demo, and validate XieZhi repeatably |
 | 9 | Control Loop Hardening | close PRD gaps in patch lifecycle, verifier strictness, and review clarity | operators can accept, reject, and reason about patches with stronger evidence |
 | 10 | Semantic Control and Planning | upgrade planning and policy from file scope toward semantic scope | tasks carry semantic intent and verifier can detect semantic scope drift |
+| 11 | Supervisor and Subagent Orchestration | move from one-shot task execution toward a supervised multi-agent loop | the main agent can decompose goals, assign subagents, and advance the DAG with evidence |
 
 ## Suggested Build Order
 
@@ -44,6 +45,7 @@ init
 4. Keep semantic diff and verifier minimal-but-real before polishing HTML or dashboard output.
 5. After alpha and release workflow, close the remaining PRD gaps in lifecycle and verification before broadening planner ambition.
 6. Only after the control loop is hardened, invest in semantic policy and richer planner output.
+7. Only after semantic scope and richer DAG structure exist should XieZhi grow into a supervisor that coordinates subagents.
 
 ## Files
 
@@ -58,3 +60,4 @@ init
 - [phase-8-release-workflow.md](/Users/terenceliu/Downloads/development/xiezhi/docs/phases/phase-8-release-workflow.md:1)
 - [phase-9-control-loop-hardening.md](/Users/terenceliu/Downloads/development/xiezhi/docs/phases/phase-9-control-loop-hardening.md:1)
 - [phase-10-semantic-control-and-planning.md](/Users/terenceliu/Downloads/development/xiezhi/docs/phases/phase-10-semantic-control-and-planning.md:1)
+- [phase-11-supervisor-subagent-orchestration.md](/Users/terenceliu/Downloads/development/xiezhi/docs/phases/phase-11-supervisor-subagent-orchestration.md:1)

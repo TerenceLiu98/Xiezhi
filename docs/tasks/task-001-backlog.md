@@ -7,6 +7,7 @@ The first real product loop is complete. The best next path is:
 1. Finish all `P0` items in Phase 9 so patch lifecycle, verification strictness, and operator acceptance match the PRD more closely.
 2. Then land the `P1` evidence and failure-clarity work in Phase 9.
 3. Only after the loop is hardened should we broaden planning and semantic policy in Phase 10.
+4. After semantic policy exists, grow XieZhi into a supervisor and subagent orchestration system in Phase 11.
 
 ## Backlog Summary
 
@@ -92,6 +93,13 @@ The first real product loop is complete. The best next path is:
 | T104 | Richer DAG model and status transitions | 10 | P1 | todo | T030,T031,T035,T103 |
 | T105 | Risk and dependency heuristics | 10 | P2 | todo | T055,T093 |
 | T106 | Acceptance traceability and goal-match scoring | 10 | P2 | todo | T094,T103 |
+| T110 | Supervisor run loop and session model | 11 | P1 | todo | T103,T104 |
+| T111 | Subagent run persistence and event stream | 11 | P1 | todo | T110,T096 |
+| T112 | Subagent runtime contract and assignment adapter | 11 | P1 | todo | T110,T101 |
+| T113 | DAG-to-assignment compiler | 11 | P1 | todo | T103,T110,T112 |
+| T114 | Agent and task observability surfaces | 11 | P1 | todo | T111,T113 |
+| T115 | Supervisor decision engine and recovery loop | 11 | P1 | todo | T094,T111,T113 |
+| T116 | Semantic guardrails in delegated execution | 11 | P1 | todo | T102,T112,T115 |
 
 ## First Build Slice
 

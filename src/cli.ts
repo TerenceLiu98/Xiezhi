@@ -6,12 +6,13 @@ import { runDagShowCommand } from "./commands/dag.js"
 import { runDoctorCommand } from "./commands/doctor.js"
 import { runIndexCommand } from "./commands/index.js"
 import { runInit } from "./commands/init.js"
-import { runPlanCommand } from "./commands/plan.js"
+import { runBootstrapCommand, runPlanCommand } from "./commands/plan.js"
 import { runReviewCommand } from "./commands/review.js"
 import { runPatchAcceptCommand, runTaskDiscardCommand, runTaskListCommand, runTaskRetryCommand, runTaskRunCommand } from "./commands/task.js"
 import { runVerifyCommand } from "./commands/verify.js"
 import { loadProjectConfig } from "./config/loader.js"
 import { XieZhiError, toError } from "./core/errors.js"
+import { UNBORN_HEAD } from "./core/git.js"
 import {
   formatInlineList,
   formatStatus,
@@ -45,12 +46,19 @@ program
       `package manager: ${result.packageManager}`,
       `preset: ${result.preset}`,
       `created config: ${String(result.createdConfig)}`,
+      `created git repo: ${String(result.createdGitRepository)}`,
       `applied migrations: ${result.appliedMigrations.length}`,
       `repo id: ${result.repository.id}`,
       `repo root: ${result.repository.rootPath}`,
       `head commit: ${result.repository.headCommit}`,
       `dirty: ${String(result.repository.isDirty)}`
     ])
+    if (result.repository.headCommit === UNBORN_HEAD) {
+      printCard("Next Step", [
+        "This repository has no commit yet, so task worktrees cannot be created.",
+        "Create a baseline commit with `git add . && git commit -m \"chore: initial baseline\"` before `xiezhi task run`."
+      ])
+    }
   })
 
 program
@@ -100,6 +108,34 @@ program
       `indexed paths: ${result.indexedPaths.length}`,
       `deleted paths: ${result.deletedPaths.length}`
     ])
+  })
+
+program
+  .command("bootstrap")
+  .description("Create a greenfield app bootstrap plan without requiring an existing code index")
+  .argument("<request>", "The app idea to bootstrap")
+  .action(async (request: string) => {
+    const result = await runBootstrapCommand(process.cwd(), request)
+    printSection("Bootstrap", [
+      `status: ${formatStatus(result.status)}`,
+      `request: ${result.request}`,
+      `feature id: ${result.featureId}`,
+      `title: ${result.title}`,
+      `template: ${result.template}`,
+      `feature status: ${formatStatus(result.featureStatus)}`,
+      `tasks: ${result.taskCount}`,
+      `starter files: ${result.starterFiles.length}`
+    ])
+    printList("Starter Files", result.starterFiles)
+    for (const [index, task] of result.tasks.entries()) {
+      printCard(`Task ${index + 1}`, [
+        `id: ${task.id}`,
+        `status: ${formatStatus(task.status)}`,
+        `title: ${task.title}`,
+        `scope: ${formatInlineList(task.allowedFiles, { emptyText: "n/a", max: 4 })}`,
+        `acceptance: ${formatInlineList(task.acceptance, { emptyText: "n/a", max: 3 })}`
+      ])
+    }
   })
 
 program
