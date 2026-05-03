@@ -19,7 +19,7 @@ Status: `todo`
 
 - Priority: `P2`
 - Phase: `14`
-- Goal: connect user goals, supervisor runs, accepted patches, and verification evidence into a navigable history
+- Goal: connect user goals, agent sessions, promoted patches, and verification evidence into a navigable history
 - Deliverables:
   - version or checkpoint records
   - accepted patch grouping
@@ -58,11 +58,11 @@ Status: `todo`
 
 - Priority: `P2`
 - Phase: `14`
-- Goal: persist durable audit evidence for supervisor decisions, accepted patches, retries, and escalations
+- Goal: persist durable audit evidence for agent decisions, promoted patches, retries, and escalations
 - Deliverables:
   - audit event model
   - audit report
-  - links to supervisor, agent, task, patch, and verification records
+  - links to agent session, agent run, task, patch, and verification records
 - Acceptance:
   - accepted work can be traced from user request to decision evidence
   - retry and escalation history is inspectable
@@ -71,7 +71,7 @@ Status: `todo`
 
 - Priority: `P2`
 - Phase: `14`
-- Goal: make core verification and review artifacts usable from CI without requiring a full interactive supervisor session
+- Goal: make core verification and review artifacts usable from CI without requiring a full interactive agent session
 - Deliverables:
   - CI-oriented command notes or wrappers
   - machine-readable review artifact requirements

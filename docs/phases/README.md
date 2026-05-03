@@ -7,13 +7,13 @@ The goal is not to create a heavyweight project plan. The goal is to create a bu
 ```text
 init
   -> index
-  -> plan
-  -> task run
+  -> agent plan
+  -> agent run
   -> verify
   -> review
 ```
 
-The `v2` direction adds a supervisor layer on top:
+The `v2` direction adds an agent-framework layer on top:
 
 ```text
 user request
@@ -37,7 +37,7 @@ user request
 | 0 | Foundation | repo scaffold, toolchain, config, DB bootstrap | project boots and core commands can be stubbed |
 | 1 | Local Core | storage models, worktree lifecycle, shared runtime contracts | local state and worktree execution are reliable |
 | 2 | Indexer | TypeScript repo indexing and code graph | repo can be indexed and queried |
-| 3 | Planning | Feature DAG, Task DAG, Intent IR | natural language request becomes runnable tasks |
+| 3 | Planning | Feature DAG, Task DAG, Intent IR | agent plan becomes runnable tasks |
 | 4 | Execution | runtime adapters and controlled task execution | one task can run in isolated mode through a runtime |
 | 5 | Verification | semantic diff, verifier, review report | patch can be accepted or rejected with evidence |
 | 6 | Alpha | multi-runtime hardening and demo preparation | alpha release criteria are satisfied |
@@ -45,9 +45,9 @@ user request
 | 8 | Release Workflow | external alpha onboarding, reports, and CI guardrails | a new team can install, demo, and validate XieZhi repeatably |
 | 9 | Control Loop Hardening | close PRD gaps in patch lifecycle, verifier strictness, and review clarity | operators can accept, reject, and reason about patches with stronger evidence |
 | 10 | Semantic Control and Planning | upgrade planning and policy from file scope toward semantic scope | tasks carry semantic intent and verifier can detect semantic scope drift |
-| 11 | Supervisor and Subagent Orchestration | move from one-shot task execution toward a supervised multi-agent loop | the main agent can decompose goals, assign subagents, and advance the DAG with evidence |
+| 11 | Agent Framework Session Model | move from one-shot task execution toward agent-planned graph sessions | the main agent can submit plans and run scoped tasks with evidence |
 | 12 | Agent Observability and Context | make agent work inspectable and give subagents high-quality context packs | operators can inspect task intent, agent runs, runtime mode, and context |
-| 13 | Recovery and Integration | let the supervisor retry, split, reassign, and integrate patches | failed work can recover through structured supervisor decisions |
+| 13 | Recovery and Integration | let the agent retry, split, reassign, and integrate patches | failed work can recover through structured agent decisions |
 | 14 | Product and Governance Layer | translate the orchestrator into product-facing and team-facing surfaces | users can understand roadmap, risk, history, and policy without reading raw DAGs |
 
 ## Suggested Build Order
@@ -56,10 +56,10 @@ user request
 2. Land a thin OpenCode path first in Phase 4.
 3. Only after one runtime works, add Claude and Codex adapters.
 4. Keep semantic diff and verifier minimal-but-real before polishing HTML or dashboard output.
-5. After alpha and release workflow, close the remaining PRD gaps in lifecycle and verification before broadening planner ambition.
-6. Only after the control loop is hardened, invest in semantic policy and richer planner output.
-7. Only after semantic scope and richer DAG structure exist should XieZhi grow into a supervisor that coordinates subagents.
-8. Add observability and recovery before product-layer UI, because users need to trust the orchestration before it becomes more autonomous.
+5. After alpha and release workflow, close the remaining PRD gaps in lifecycle and verification before broadening agent-plan import.
+6. Only after the control loop is hardened, invest in semantic policy and richer AgentPlan output.
+7. Keep orchestration decisions in the agent; let XieZhi provide validated DAG/AST state and evidence.
+8. Add observability and recovery before product-layer UI, because users need to trust the framework before it becomes more autonomous.
 
 ## Files
 
@@ -74,7 +74,7 @@ user request
 - [phase-8-release-workflow.md](/Users/terenceliu/Downloads/development/xiezhi/docs/phases/phase-8-release-workflow.md:1)
 - [phase-9-control-loop-hardening.md](/Users/terenceliu/Downloads/development/xiezhi/docs/phases/phase-9-control-loop-hardening.md:1)
 - [phase-10-semantic-control-and-planning.md](/Users/terenceliu/Downloads/development/xiezhi/docs/phases/phase-10-semantic-control-and-planning.md:1)
-- [phase-11-supervisor-subagent-orchestration.md](/Users/terenceliu/Downloads/development/xiezhi/docs/phases/phase-11-supervisor-subagent-orchestration.md:1)
+- [phase-11-agent-framework-session-model.md](/Users/terenceliu/Downloads/development/xiezhi/docs/phases/phase-11-agent-framework-session-model.md:1)
 - [phase-12-agent-observability-and-context.md](/Users/terenceliu/Downloads/development/xiezhi/docs/phases/phase-12-agent-observability-and-context.md:1)
 - [phase-13-recovery-and-integration.md](/Users/terenceliu/Downloads/development/xiezhi/docs/phases/phase-13-recovery-and-integration.md:1)
 - [phase-14-product-governance-layer.md](/Users/terenceliu/Downloads/development/xiezhi/docs/phases/phase-14-product-governance-layer.md:1)

@@ -78,6 +78,11 @@ export const patchesTable = sqliteTable("patches", {
   baseCommit: text("base_commit").notNull(),
   worktreePath: text("worktree_path").notNull(),
   runtimeName: text("runtime_name").notNull(),
+  runtimeMode: text("runtime_mode").notNull().default("scaffold"),
+  runtimeEvidenceJson: text("runtime_evidence_json"),
+  promotionJson: text("promotion_json"),
+  promotedAt: text("promoted_at"),
+  agentRunId: text("agent_run_id"),
   changedFilesJson: text("changed_files_json").notNull(),
   diff: text("diff"),
   semanticDiffJson: text("semantic_diff_json"),
@@ -112,5 +117,51 @@ export const commandLogsTable = sqliteTable("command_logs", {
   command: text("command").notNull(),
   exitCode: integer("exit_code").notNull(),
   output: text("output").notNull(),
+  createdAt: text("created_at").notNull()
+})
+
+export const agentSessionsTable = sqliteTable("agent_sessions", {
+  id: text("id").primaryKey(),
+  goal: text("goal").notNull(),
+  featureId: text("feature_id"),
+  planningRuntimeName: text("planning_runtime_name").notNull(),
+  rawAgentOutput: text("raw_agent_output"),
+  planSummaryJson: text("plan_summary_json"),
+  status: text("status").notNull(),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull()
+})
+
+export const assignmentsTable = sqliteTable("assignments", {
+  id: text("id").primaryKey(),
+  agentSessionId: text("agent_session_id"),
+  taskId: text("task_id").notNull(),
+  goal: text("goal").notNull(),
+  contractJson: text("contract_json").notNull(),
+  status: text("status").notNull(),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull()
+})
+
+export const agentRunsTable = sqliteTable("agent_runs", {
+  id: text("id").primaryKey(),
+  agentSessionId: text("agent_session_id"),
+  assignmentId: text("assignment_id"),
+  taskId: text("task_id").notNull(),
+  runtimeName: text("runtime_name").notNull(),
+  runtimeMode: text("runtime_mode"),
+  patchId: text("patch_id"),
+  status: text("status").notNull(),
+  eventSummaryJson: text("event_summary_json"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull()
+})
+
+export const agentEventsTable = sqliteTable("agent_events", {
+  id: text("id").primaryKey(),
+  agentRunId: text("agent_run_id").notNull(),
+  type: text("type").notNull(),
+  summary: text("summary").notNull(),
+  metadataJson: text("metadata_json"),
   createdAt: text("created_at").notNull()
 })

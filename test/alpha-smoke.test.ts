@@ -6,13 +6,13 @@ import { describe, expect, it } from "vitest"
 
 import { runIndexCommand } from "../src/commands/index.js"
 import { runInit } from "../src/commands/init.js"
-import { runPlanCommand } from "../src/commands/plan.js"
 import { runReviewCommand } from "../src/commands/review.js"
 import { runTaskRunCommand } from "../src/commands/task.js"
 import { runVerifyCommand } from "../src/commands/verify.js"
 import { openDatabaseConnection } from "../src/db/client.js"
 import * as schema from "../src/db/schema.js"
 import { PatchRecordService } from "../src/services/patch-record-service.js"
+import { importRouterPlan } from "./support/agent-plan-fixture.js"
 import { createTempTsRepo } from "./support/git-fixture.js"
 
 type PlannedTaskSummary = {
@@ -57,7 +57,7 @@ describe("alpha smoke flows", () => {
     const cwd = await createTempTsRepo("xiezhi-alpha-warning-")
     await runInit(cwd)
     await runIndexCommand({ cwd, mode: "full" })
-    const plan = await runPlanCommand(cwd, "update router user flow")
+    const plan = importRouterPlan(cwd)
     const task = selectTaskForWarningFlow(plan.tasks)
 
     const taskRun = await runTaskRunCommand(cwd, task.id, "opencode")
@@ -73,7 +73,7 @@ describe("alpha smoke flows", () => {
     const cwd = await createTempTsRepo("xiezhi-alpha-accepted-")
     await runInit(cwd)
     await runIndexCommand({ cwd, mode: "full" })
-    const plan = await runPlanCommand(cwd, "update router user flow")
+    const plan = importRouterPlan(cwd)
     const task = selectTaskForAcceptedFlow(plan.tasks)
     const taskRun = await runTaskRunCommand(cwd, task.id, "opencode")
 
@@ -96,7 +96,7 @@ describe("alpha smoke flows", () => {
     const cwd = await createTempTsRepo("xiezhi-alpha-rejected-")
     await runInit(cwd)
     await runIndexCommand({ cwd, mode: "full" })
-    const plan = await runPlanCommand(cwd, "update router user flow")
+    const plan = importRouterPlan(cwd)
     const task = selectTaskForAcceptedFlow(plan.tasks)
     const taskRun = await runTaskRunCommand(cwd, task.id, "opencode")
 

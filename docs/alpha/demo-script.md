@@ -15,9 +15,9 @@ pnpm smoke:alpha
 ```bash
 xiezhi init
 xiezhi index --full
-xiezhi plan "update router user flow"
+xiezhi agent plan "update router user flow" --runtime opencode
 xiezhi task list
-xiezhi task run <task-id> --runtime opencode
+xiezhi agent run <task-id> --runtime opencode
 ```
 
 At this point XieZhi prints the worktree path. Open that worktree and make one of the following edits:

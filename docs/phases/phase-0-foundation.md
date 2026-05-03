@@ -34,7 +34,7 @@ Create a stable local developer foundation for building XieZhi.
 
 - Project scaffold compiles with `pnpm build`
 - Test runner works with at least one smoke test
-- `xiezhi init`, `xiezhi index`, `xiezhi plan`, `xiezhi task run`, `xiezhi verify`, `xiezhi review` exist as stubbed commands
+- `xiezhi init`, `xiezhi index`, `xiezhi agent plan`, `xiezhi agent run`, `xiezhi verify`, `xiezhi review` exist as stubbed commands
 - SQLite database can be created locally
 - Drizzle schema and migration workflow are in place
 

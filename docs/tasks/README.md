@@ -17,7 +17,7 @@ This directory contains the implementation task backlog derived from the PRD and
 
 ## Suggested Reading Order
 
-Start with [../prd_v2.md](/Users/terenceliu/Downloads/development/xiezhi/docs/prd_v2.md:1) for the current agent-native orchestration thesis.
+Start with [../prd_v2.md](/Users/terenceliu/Downloads/development/xiezhi/docs/prd_v2.md:1) for the current agent-framework thesis.
 
 1. [task-001-backlog.md](/Users/terenceliu/Downloads/development/xiezhi/docs/tasks/task-001-backlog.md:1)
 2. [task-002-core-and-cli.md](/Users/terenceliu/Downloads/development/xiezhi/docs/tasks/task-002-core-and-cli.md:1)
@@ -29,7 +29,7 @@ Start with [../prd_v2.md](/Users/terenceliu/Downloads/development/xiezhi/docs/pr
 8. [task-008-release-workflow.md](/Users/terenceliu/Downloads/development/xiezhi/docs/tasks/task-008-release-workflow.md:1)
 9. [task-009-control-loop-hardening.md](/Users/terenceliu/Downloads/development/xiezhi/docs/tasks/task-009-control-loop-hardening.md:1)
 10. [task-010-semantic-control-and-planning.md](/Users/terenceliu/Downloads/development/xiezhi/docs/tasks/task-010-semantic-control-and-planning.md:1)
-11. [task-011-supervisor-subagent-orchestration.md](/Users/terenceliu/Downloads/development/xiezhi/docs/tasks/task-011-supervisor-subagent-orchestration.md:1)
+11. [task-011-agent-framework-session-tasks.md](/Users/terenceliu/Downloads/development/xiezhi/docs/tasks/task-011-agent-framework-session-tasks.md:1)
 12. [task-012-agent-observability-and-context.md](/Users/terenceliu/Downloads/development/xiezhi/docs/tasks/task-012-agent-observability-and-context.md:1)
 13. [task-013-recovery-and-integration.md](/Users/terenceliu/Downloads/development/xiezhi/docs/tasks/task-013-recovery-and-integration.md:1)
 14. [task-014-product-governance-layer.md](/Users/terenceliu/Downloads/development/xiezhi/docs/tasks/task-014-product-governance-layer.md:1)

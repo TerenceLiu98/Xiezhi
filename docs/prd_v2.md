@@ -8,15 +8,15 @@
 
 ## 1. Product Summary
 
-**XieZhi is an agent-native orchestration runtime that lets a main agent dynamically decompose user intent, organize subagents, and constrain code changes through DAGs and AST-based verification.**
+**XieZhi is an agent-native DAG/AST framework that lets a main agent turn plans into durable task state and constrain code changes through patch evidence and semantic verification.**
 
 In simpler terms:
 
 > XieZhi gives coding agents task boundaries, engineering state, and code-impact guardrails.
 
-XieZhi is **not** trying to replace Claude Code, Codex, Cursor, OpenCode, Copilot, or other coding agents. Instead, it sits above them as a control layer.
+XieZhi is **not** trying to replace Claude Code, Codex, Cursor, OpenCode, Copilot, or other coding agents. It also does not act as the product planner or hardcoded orchestrator. Instead, it gives those agents a control layer.
 
-The main agent coordinates the work. Subagents execute individual tasks. DAGs describe product and engineering dependencies. AST analysis verifies what the agents actually changed.
+The main agent coordinates the work and emits structured plans. XieZhi validates those plans into DAGs, task contracts, and Intent IR. Subagents execute individual tasks. AST analysis verifies what the agents actually changed.
 
 ---
 
@@ -122,6 +122,8 @@ The workflow should not be rigidly hardcoded. The main agent should be able to d
 - Retry a failed task.
 - Ask the user for a decision.
 - Accept or reject a patch.
+
+XieZhi should support those decisions with durable DAG state, AST evidence, task contracts, and verification results. It should not replace the main agent with fixed orchestration heuristics.
 
 ### 6.2 Enforce Hard Boundaries with Tools
 

@@ -5,9 +5,9 @@ import { describe, expect, it } from "vitest"
 
 import { runIndexCommand } from "../src/commands/index.js"
 import { runInit } from "../src/commands/init.js"
-import { runPlanCommand } from "../src/commands/plan.js"
 import { runReviewCommand } from "../src/commands/review.js"
 import { runTaskRunCommand } from "../src/commands/task.js"
+import { importRouterPlan } from "./support/agent-plan-fixture.js"
 import { createTempTsRepo } from "./support/git-fixture.js"
 
 describe("review export command", () => {
@@ -15,7 +15,7 @@ describe("review export command", () => {
     const cwd = await createTempTsRepo("xiezhi-review-export-")
     await runInit(cwd, { preset: "local-fast" })
     await runIndexCommand({ cwd, mode: "full" })
-    const plan = await runPlanCommand(cwd, "update router user flow")
+    const plan = importRouterPlan(cwd)
     const taskRun = await runTaskRunCommand(cwd, plan.tasks[0]!.id, "opencode")
 
     const markdownOutput = ".xiezhi/exports/review.md"

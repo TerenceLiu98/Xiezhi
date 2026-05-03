@@ -25,7 +25,7 @@ export function compileExecutionPolicy(input: {
 }) {
   if (!input.policy || !input.intent) {
     throw new XieZhiError("CLI_USAGE_ERROR", "Task is missing policy or intent metadata.", {
-      hint: "Re-run `xiezhi plan` so the task has compiled Intent IR before execution."
+      hint: "Re-run `xiezhi agent plan` so the task has compiled Intent IR before execution."
     })
   }
 
@@ -52,8 +52,28 @@ export function compileExecutionPolicy(input: {
     adapterHints: {
       instructions: [
         `Goal: ${input.intent.goal}`,
+        ...(input.intent.summary ? [`Summary: ${input.intent.summary}`] : []),
         `Stay within allowed files: ${allowedFiles.join(", ") || "none"}.`,
-        `Avoid forbidden files: ${forbiddenFiles.join(", ") || "none"}.`
+        `Avoid forbidden files: ${forbiddenFiles.join(", ") || "none"}.`,
+        "Do not create, edit, install, format, or regenerate files outside the allowed file list.",
+        "If a command would create lockfiles, build artifacts, or other files outside the allowed scope, skip that command and explain it in your final summary.",
+        ...(input.intent.relatedSymbols.length > 0
+          ? [`Relevant symbols: ${input.intent.relatedSymbols.join(", ")}.`]
+          : []),
+        ...("allowedSymbols" in input.intent && input.intent.allowedSymbols.length > 0
+          ? [`Allowed symbols: ${input.intent.allowedSymbols.join(", ")}.`]
+          : []),
+        ...("forbiddenSymbols" in input.intent && input.intent.forbiddenSymbols.length > 0
+          ? [`Forbidden symbols: ${input.intent.forbiddenSymbols.join(", ")}.`]
+          : []),
+        "Acceptance criteria:",
+        ...(input.intent.acceptance.length > 0 ? input.intent.acceptance.map((criterion) => `- ${criterion}`) : ["- None recorded."]),
+        ...("expectedOutputs" in input.intent && input.intent.expectedOutputs.length > 0
+          ? ["Expected outputs:", ...input.intent.expectedOutputs.map((output) => `- ${output}`)]
+          : []),
+        ...(input.intent.recommendedCommands.length > 0
+          ? ["Recommended checks:", ...input.intent.recommendedCommands.map((command) => `- ${command}`)]
+          : [])
       ],
       allowedPaths: allowedFiles,
       verificationCommands: input.intent.recommendedCommands

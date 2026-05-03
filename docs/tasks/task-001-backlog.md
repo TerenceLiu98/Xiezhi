@@ -6,7 +6,7 @@ The first controlled patch loop is complete. Based on PRD v2, the best next path
 
 1. Finish Phase 9 clarity work so task state and runtime evidence are trustworthy.
 2. Land Phase 10 semantic scope so AST and symbol data can act as hard guardrails.
-3. Build the Phase 11 supervisor MVP around one main-agent-to-subagent vertical path.
+3. Build the Phase 11 agent-framework MVP around one AgentPlan-to-agent-run vertical path.
 4. Add Phase 12 observability and context packs so operators can see what agents are doing.
 5. Add Phase 13 recovery loops for retry, split, reassign, and integration.
 6. Leave Phase 14 product and governance surfaces until the technical MVP has proven itself.
@@ -38,8 +38,8 @@ The first controlled patch loop is complete. Based on PRD v2, the best next path
 | T027 | Index summary formatter | 2 | P0 | done | T025 |
 | T030 | Feature DAG schema and validation | 3 | P0 | done | T010 |
 | T031 | Task DAG execution model | 3 | P0 | done | T030 |
-| T032 | Planner prompt and response normalization | 3 | P0 | done | T031 |
-| T033 | Scope inference from code index | 3 | P0 | done | T025 |
+| T032 | AgentPlan prompt and response normalization | 3 | P0 | done | T031 |
+| T033 | AgentPlan scope validation | 3 | P0 | done | T025 |
 | T034 | Intent IR schema and generator | 3 | P0 | done | T031,T033 |
 | T035 | DAG persistence | 3 | P0 | done | T030 |
 | T036 | DAG show CLI renderer | 3 | P1 | done | T035 |
@@ -93,25 +93,25 @@ The first controlled patch loop is complete. Based on PRD v2, the best next path
 | T100 | Intent IR v2 schema and persistence | 10 | P1 | todo | T034,T035 |
 | T101 | Semantic policy compiler | 10 | P1 | todo | T041,T100 |
 | T102 | Semantic scope verifier | 10 | P1 | todo | T055,T101 |
-| T103 | Planner-backed DAG generation | 10 | P1 | todo | T032,T033,T035 |
+| T103 | AgentPlan-backed DAG import | 10 | P1 | todo | T032,T033,T035 |
 | T104 | Richer DAG model and status transitions | 10 | P1 | todo | T030,T031,T035,T103 |
 | T105 | Risk and dependency heuristics | 10 | P2 | todo | T055,T093 |
 | T106 | Acceptance traceability and goal-match scoring | 10 | P2 | todo | T094,T103 |
 | T125 | MVP semantic scope verifier | 10 | P0 | todo | T100,T101,T102 |
-| T110 | Supervisor run loop and session model | 11 | P1 | todo | T103,T104 |
+| T110 | AgentPlan schema and importer | 11 | P1 | todo | T103,T104 |
 | T111 | Subagent run persistence and event stream | 11 | P1 | todo | T110,T096 |
 | T112 | Subagent runtime contract and assignment adapter | 11 | P1 | todo | T110,T101 |
 | T113 | DAG-to-assignment compiler | 11 | P1 | todo | T103,T110,T112 |
 | T116 | Semantic guardrails in delegated execution | 11 | P1 | todo | T102,T112,T125 |
-| T120 | Supervisor run skeleton | 11 | P0 | todo | T103,T104,T117 |
+| T120 | Agent framework session skeleton | 11 | P0 | todo | T103,T104,T117 |
 | T121 | Agent run persistence MVP | 11 | P0 | todo | T110,T118 |
 | T122 | Assignment contract MVP | 11 | P0 | todo | T100,T112,T121 |
 | T126 | Note-taking MVP demo | 11 | P0 | todo | T117,T118,T120,T121,T122,T125 |
 | T114 | Agent and task observability surfaces | 12 | P1 | todo | T111,T121 |
 | T119 | Task show deep view | 12 | P0 | todo | T096,T117,T118 |
 | T123 | Context Pack Builder | 12 | P1 | todo | T100,T122 |
-| T115 | Supervisor decision engine and recovery loop | 13 | P1 | todo | T094,T111,T113 |
-| T124 | Supervisor decision loop MVP | 13 | P0 | todo | T115,T118,T125 |
+| T115 | Agent decision evidence and recovery loop | 13 | P1 | todo | T094,T111,T113 |
+| T124 | Agent decision loop MVP | 13 | P0 | todo | T115,T118,T125 |
 | T127 | Task split and retry policy | 13 | P1 | todo | T104,T115,T124 |
 | T128 | Simple integration agent | 13 | P2 | todo | T112,T124,T127 |
 | T130 | Product roadmap view | 14 | P2 | todo | T114,T126 |
@@ -131,4 +131,4 @@ If we want the fastest path to the PRD v2 technical MVP, the next slice should b
 - `T125`
 - `T126`
 
-That slice is enough to demo one main-agent-controlled subagent task with clear runtime evidence, task visibility, patch capture, and semantic verification.
+That slice is enough to demo one agent-planned task with clear runtime evidence, task visibility, patch capture, and semantic verification.

@@ -15,7 +15,7 @@ Run one task through a controlled coding runtime and capture a patch plus execut
 
 ## Deliverables
 
-- `xiezhi task run <task-id> --runtime opencode` works end-to-end
+- `xiezhi agent run <task-id> --runtime opencode` works end-to-end
 - Runtime events are normalized into XieZhi-owned event types
 - Execution policy is compiled from Intent IR
 - Patch, logs, and usage are persisted

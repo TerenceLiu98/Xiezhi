@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest"
 
 import { runIndexCommand } from "../src/commands/index.js"
 import { runInit } from "../src/commands/init.js"
-import { runPlanCommand } from "../src/commands/plan.js"
 import { runTaskRunCommand } from "../src/commands/task.js"
 import { openDatabaseConnection } from "../src/db/client.js"
+import { importRouterPlan } from "./support/agent-plan-fixture.js"
 import { createTempTsRepo } from "./support/git-fixture.js"
 
 describe("scaffold runtimes", () => {
@@ -12,7 +12,7 @@ describe("scaffold runtimes", () => {
     const cwd = await createTempTsRepo("xiezhi-runtimes-")
     await runInit(cwd)
     await runIndexCommand({ cwd, mode: "full" })
-    const plan = await runPlanCommand(cwd, "add user invitation flow")
+    const plan = importRouterPlan(cwd)
     const taskId = plan.tasks[0]!.id
 
     const claudeRun = await runTaskRunCommand(cwd, taskId, "claude")

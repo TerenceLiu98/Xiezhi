@@ -78,7 +78,7 @@ async function checkGitRepo(cwd: string) {
         title: "Git repository",
         status: "warning",
         summary: `Repository root detected at ${result.stdout.trim()}, but there is no baseline commit yet.`,
-        nextStep: "Create an initial commit before `xiezhi task run`, for example `git add . && git commit -m \"chore: initial baseline\"`."
+        nextStep: "Create an initial commit before `xiezhi agent run`, for example `git add . && git commit -m \"chore: initial baseline\"`."
       })
     }
 

@@ -106,4 +106,4 @@ Status: `todo`
 - Acceptance:
   - a patch can be warned or rejected for modifying a symbol outside the task contract
   - the verifier distinguishes file-scope violations from symbol-scope violations
-  - supervisor decisions can consume semantic scope evidence
+  - agent decisions can consume semantic scope evidence

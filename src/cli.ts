@@ -2,13 +2,21 @@
 
 import { Command } from "commander"
 
+import { runAgentPlanCommand, runAgentTaskCommand } from "./commands/agent.js"
 import { runDagShowCommand } from "./commands/dag.js"
 import { runDoctorCommand } from "./commands/doctor.js"
 import { runIndexCommand } from "./commands/index.js"
 import { runInit } from "./commands/init.js"
-import { runBootstrapCommand, runPlanCommand } from "./commands/plan.js"
 import { runReviewCommand } from "./commands/review.js"
-import { runPatchAcceptCommand, runTaskDiscardCommand, runTaskListCommand, runTaskRetryCommand, runTaskRunCommand } from "./commands/task.js"
+import {
+  runPatchAcceptCommand,
+  runPatchPromoteCommand,
+  runTaskDiscardCommand,
+  runTaskListCommand,
+  runTaskRetryCommand,
+  runTaskRunCommand,
+  runTaskShowCommand
+} from "./commands/task.js"
 import { runVerifyCommand } from "./commands/verify.js"
 import { loadProjectConfig } from "./config/loader.js"
 import { XieZhiError, toError } from "./core/errors.js"
@@ -56,7 +64,7 @@ program
     if (result.repository.headCommit === UNBORN_HEAD) {
       printCard("Next Step", [
         "This repository has no commit yet, so task worktrees cannot be created.",
-        "Create a baseline commit with `git add . && git commit -m \"chore: initial baseline\"` before `xiezhi task run`."
+        "Create a baseline commit with `git add . && git commit -m \"chore: initial baseline\"` before `xiezhi agent run`."
       ])
     }
   })
@@ -110,25 +118,29 @@ program
     ])
   })
 
-program
-  .command("bootstrap")
-  .description("Create a greenfield app bootstrap plan without requiring an existing code index")
-  .argument("<request>", "The app idea to bootstrap")
-  .action(async (request: string) => {
-    const result = await runBootstrapCommand(process.cwd(), request)
-    printSection("Bootstrap", [
+const agentCommand = program.command("agent").description("Plan and execute work through external coding agents")
+
+agentCommand
+  .command("plan")
+  .description("Ask an agent runtime for a strict AgentPlan JSON object and import it as XieZhi DAG state")
+  .argument("<goal>", "Goal for the planning agent")
+  .option("--runtime <runtime>", "Runtime to use", "opencode")
+  .action(async (goal: string, options: { runtime: RuntimeName }) => {
+    const result = await runAgentPlanCommand(process.cwd(), goal, options.runtime)
+    printSection("Agent Plan", [
       `status: ${formatStatus(result.status)}`,
-      `request: ${result.request}`,
+      `agent session: ${result.agentSessionId}`,
+      `runtime: ${result.runtimeName}`,
+      `goal: ${result.goal}`,
       `feature id: ${result.featureId}`,
       `title: ${result.title}`,
-      `template: ${result.template}`,
       `feature status: ${formatStatus(result.featureStatus)}`,
       `tasks: ${result.taskCount}`,
-      `starter files: ${result.starterFiles.length}`
+      `nodes: ${result.nodeCount}`,
+      `edges: ${result.edgeCount}`
     ])
-    printList("Starter Files", result.starterFiles)
     for (const [index, task] of result.tasks.entries()) {
-      printCard(`Task ${index + 1}`, [
+      printCard(`Task ${index + 1} · ${task.key}`, [
         `id: ${task.id}`,
         `status: ${formatStatus(task.status)}`,
         `title: ${task.title}`,
@@ -138,31 +150,33 @@ program
     }
   })
 
-program
-  .command("plan")
-  .description("Generate a feature and task plan from a natural language request")
-  .argument("<request>", "The feature request to plan")
-  .action(async (request: string) => {
-    const result = await runPlanCommand(process.cwd(), request)
-    printSection("Plan", [
+agentCommand
+  .command("run")
+  .description("Compile a task assignment, run the selected agent runtime, and capture a patch")
+  .argument("<taskId>", "Task id")
+  .option("--runtime <runtime>", "Runtime to use", "opencode")
+  .action(async (taskId: string, options: { runtime: RuntimeName }) => {
+    const result = await runAgentTaskCommand(process.cwd(), taskId, options.runtime)
+    printSection("Agent Run", [
       `status: ${formatStatus(result.status)}`,
-      `request: ${result.request}`,
-      `feature id: ${result.featureId}`,
-      `title: ${result.title}`,
-      `feature status: ${formatStatus(result.featureStatus)}`,
-      `tasks: ${result.taskCount}`,
-      `nodes: ${result.nodeCount}`,
-      `edges: ${result.edgeCount}`
+      `agent session: ${result.agentSessionId ?? "none"}`,
+      `task id: ${result.taskId}`,
+      `task title: ${result.taskTitle}`,
+      `assignment: ${result.assignmentId}`,
+      `agent run: ${result.agentRunId}`,
+      `runtime: ${result.runtime}/${result.runtimeMode}`,
+      `patch id: ${result.patchId}`,
+      `patch status: ${formatStatus(result.patchStatus)}`,
+      `task status: ${formatStatus(result.taskStatus)}`,
+      `changed files: ${result.changedFiles.length}`,
+      `next step: ${result.nextStep}`
     ])
-    for (const [index, task] of result.tasks.entries()) {
-      printCard(`Task ${index + 1}`, [
-        `id: ${task.id}`,
-        `status: ${formatStatus(task.status)}`,
-        `title: ${task.title}`,
-        `scope: ${formatInlineList(task.allowedFiles, { emptyText: "n/a", max: 4 })}`,
-        `acceptance: ${formatInlineList(task.acceptance, { emptyText: "n/a", max: 3 })}`
-      ])
-    }
+    printList("Changed Files", result.changedFiles, { emptyText: "none" })
+    printCard("Inspect", [
+      `xiezhi task show ${result.taskId}`,
+      `xiezhi verify ${result.patchId}`,
+      `xiezhi review ${result.patchId}`
+    ])
   })
 
 const dagCommand = program.command("dag").description("Inspect DAG data")
@@ -207,7 +221,7 @@ taskCommand
       printCard("Next Up", [
         `${formatStatus(readyTask.status)} ${readyTask.title}`,
         `task: ${shortenId(readyTask.id)}  full: ${readyTask.id}`,
-        `run: xiezhi task run ${readyTask.id} --runtime opencode`
+        `run: xiezhi agent run ${readyTask.id} --runtime opencode`
       ])
     }
 
@@ -216,8 +230,12 @@ taskCommand
         task.title,
         `Scope: ${task.scopeSummary}`,
         `Depends: ${formatInlineList(task.dependsOnTaskIds.map((id) => shortenId(id)), { emptyText: "none" })}`,
-        `Patches: ${task.patchCount}${task.latestPatch ? ` · latest ${task.latestPatch.status} (${shortenId(task.latestPatch.id)})` : ""}`,
-        `Run: xiezhi task run ${task.id} --runtime opencode`
+        `Patches: ${task.patchCount}${
+          task.latestPatch
+            ? ` · latest ${task.latestPatch.status} (${shortenId(task.latestPatch.id)}) via ${task.latestPatch.runtimeName}/${task.latestPatch.runtimeMode} · files ${task.latestPatch.changedFiles.length}`
+            : ""
+        }`,
+        `Run: xiezhi agent run ${task.id} --runtime opencode`
       ])
       printIndentedList("Files", task.allowedFiles, { emptyText: "n/a" })
       if (task.relatedSymbols.length > 0) {
@@ -227,6 +245,72 @@ taskCommand
       printIndentedList("Commands", task.recommendedCommands, { emptyText: "n/a" })
       console.log("")
     }
+  })
+
+taskCommand
+  .command("show")
+  .description("Show task intent, latest patch evidence, and next action")
+  .argument("<taskId>", "Task id")
+  .action(async (taskId: string) => {
+    const result = await runTaskShowCommand(process.cwd(), taskId)
+
+    printSection("Task", [
+      `status: ${formatStatus(result.status)}`,
+      `task id: ${result.taskId}`,
+      `task status: ${formatStatus(result.taskStatus)}`,
+      `title: ${result.title}`,
+      `goal: ${result.goal}`,
+      `next action: ${result.nextAction}`
+    ])
+    printCard("Intent", [
+      result.summary || "No summary recorded.",
+      ...(result.rationale.length > 0 ? [`rationale: ${result.rationale.join(" | ")}`] : []),
+      ...(result.expectedOutputs.length > 0 ? [`expected: ${result.expectedOutputs.join(" | ")}`] : [])
+    ])
+    printIndentedList("Allowed Files", result.allowedFiles, { emptyText: "none" })
+    printIndentedList("Forbidden Files", result.forbiddenFiles, { emptyText: "none" })
+    printIndentedList("Related Symbols", result.relatedSymbols, { emptyText: "none" })
+    printIndentedList("Allowed Symbols", result.allowedSymbols, { emptyText: "none" })
+    printIndentedList("Forbidden Symbols", result.forbiddenSymbols, { emptyText: "none" })
+    printIndentedList("Acceptance", result.acceptance, { emptyText: "none" })
+    printIndentedList("Commands", result.recommendedCommands, { emptyText: "none" })
+    if (result.latestPatch) {
+      printCard("Latest Patch", [
+        `id: ${result.latestPatch.id}`,
+        `status: ${formatStatus(result.latestPatch.status)}`,
+        `runtime: ${result.latestPatch.runtimeName}/${result.latestPatch.runtimeMode}`,
+        `changed files: ${result.latestPatch.changedFiles.length}`,
+        `worktree: ${result.latestPatch.worktreePath}`,
+        ...(result.latestPatch.promotedAt ? [`promoted: ${result.latestPatch.promotedAt}`] : []),
+        ...(result.latestPatch.evidence ? [`evidence: ${result.latestPatch.evidence.message}`] : [])
+      ])
+      printIndentedList("Changed Files", result.latestPatch.changedFiles, { emptyText: "none" })
+    }
+    if (result.latestAgentRun) {
+      printCard("Latest Agent Run", [
+        `id: ${result.latestAgentRun.id}`,
+        `status: ${formatStatus(result.latestAgentRun.status)}`,
+        `runtime: ${result.latestAgentRun.runtimeName}/${result.latestAgentRun.runtimeMode ?? "unknown"}`,
+        `patch: ${result.latestAgentRun.patchId ?? "none"}`
+      ])
+    }
+    if (result.latestAssignment) {
+      printCard("Latest Assignment", [
+        `id: ${result.latestAssignment.id}`,
+        `status: ${formatStatus(result.latestAssignment.status)}`,
+        `goal: ${result.latestAssignment.goal}`
+      ])
+    }
+    printList(
+      "Checks",
+      result.checks.map((check) => `${formatStatus(check.status)} ${check.type}: ${check.summary}`),
+      { emptyText: "none" }
+    )
+    printList(
+      "Violations",
+      result.violations.map((violation) => `${violation.severity} ${violation.type}: ${violation.message}`),
+      { emptyText: "none" }
+    )
   })
 
 taskCommand
@@ -344,6 +428,7 @@ program
       [
         `added nodes: ${result.semanticDiff.addedNodes.length}`,
         `removed nodes: ${result.semanticDiff.removedNodes.length}`,
+        `modified nodes: ${result.semanticDiff.modifiedNodes.length}`,
         `added exports: ${result.semanticDiff.addedExports.length}`,
         `removed exports: ${result.semanticDiff.removedExports.length}`
       ],
@@ -378,6 +463,7 @@ program
       [
         ...result.semanticDiff.addedNodes.map((node) => `added ${node.kind}: ${node.symbol ?? node.path}`),
         ...result.semanticDiff.removedNodes.map((node) => `removed ${node.kind}: ${node.symbol ?? node.path}`),
+        ...result.semanticDiff.modifiedNodes.map((node) => `modified ${node.kind}: ${node.symbol ?? node.path}`),
         ...result.semanticDiff.addedExports.map((entry) => `export added: ${entry.symbol} (${entry.path})`),
         ...result.semanticDiff.removedExports.map((entry) => `export removed: ${entry.symbol} (${entry.path})`)
       ],
@@ -421,6 +507,27 @@ patchCommand
       `task status: ${formatStatus(result.taskStatus)}`,
       `next step: ${result.nextStep}`
     ])
+  })
+
+patchCommand
+  .command("promote")
+  .description("Promote a verified patch into the repository working tree")
+  .argument("<patchId>", "Patch id")
+  .action(async (patchId: string) => {
+    const result = await runPatchPromoteCommand(process.cwd(), patchId)
+    printSection("Patch Promote", [
+      `status: ${formatStatus(result.status)}`,
+      `patch id: ${result.patchId}`,
+      `task id: ${result.taskId}`,
+      `patch status: ${formatStatus(result.patchStatus)}`,
+      `task status: ${formatStatus(result.taskStatus)}`,
+      `repo root: ${result.repoRoot}`,
+      `changed files: ${result.changedFiles.length}`,
+      `commit: ${result.commitHash ?? "none"}`,
+      `unlocked tasks: ${formatInlineList(result.unlockedTaskIds, { emptyText: "none", max: 3 })}`,
+      `next step: ${result.nextStep}`
+    ])
+    printList("Promoted Files", result.changedFiles, { emptyText: "none" })
   })
 
 program.hook("preAction", async (thisCommand, actionCommand) => {

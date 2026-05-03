@@ -2,19 +2,19 @@
 
 ## Goal
 
-Turn natural language intent into a structured execution plan with explicit scope and acceptance criteria.
+Turn agent planning output into a structured execution plan with explicit scope and acceptance criteria.
 
 ## Scope
 
 - Feature DAG data model and validation
-- Task DAG generation
+- Task DAG import and validation
 - Intent IR generation
-- Allowed scope inference from repo index
+- Allowed scope validation against repository-safe paths
 - Plan persistence and CLI display
 
 ## Deliverables
 
-- `xiezhi plan "<request>"` generates a feature and task structure
+- `xiezhi agent plan "<request>" --runtime opencode` imports strict AgentPlan JSON as a feature and task structure
 - Tasks include status, dependencies, acceptance, and initial scope
 - `xiezhi dag show` and `xiezhi task list` render persisted planning results
 
@@ -32,8 +32,8 @@ Turn natural language intent into a structured execution plan with explicit scop
 
 - `T030` feature DAG schema and validators
 - `T031` task DAG execution model and transitions
-- `T032` planner prompt and planner response normalization
-- `T033` scope inference from code index
+- `T032` AgentPlan prompt and response normalization
+- `T033` scope validation from AgentPlan and code index
 - `T034` Intent IR schema and generator
 - `T035` DAG persistence layer
 - `T036` `xiezhi dag show` renderer

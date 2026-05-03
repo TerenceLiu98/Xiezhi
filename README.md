@@ -5,9 +5,9 @@
 ![Node](https://img.shields.io/badge/node-%3E%3D22-3c873a)
 ![TypeScript](https://img.shields.io/badge/built%20with-TypeScript-3178c6)
 
-XieZhi is a controlled vibe coding platform for AI-assisted software development.
+XieZhi is a DAG, AST, assignment, patch, and evidence framework for AI-assisted software development.
 
-Instead of letting an agent directly edit a codebase and hoping the diff looks reasonable, XieZhi adds a control layer on top of an agent runtime such as OpenCode. It turns natural language requests into structured tasks, constrains what the agent is allowed to change, and verifies whether the resulting patch actually matches the task.
+Instead of letting an agent directly edit a codebase and hoping the diff looks reasonable, XieZhi adds a control layer on top of an agent runtime such as OpenCode. The agent owns planning and orchestration; XieZhi validates the agent's structured plan into DAG state, constrains what each task is allowed to change, and verifies whether the resulting patch actually matches the task.
 
 ## Why
 
@@ -30,10 +30,11 @@ For more background on the motivation behind controlled vibe coding, see [🤓 H
 
 ## Core Idea
 
-XieZhi sits between user intent and an AI coding runtime:
+XieZhi sits between an agent's plan and an AI coding runtime:
 
 ```text
-User Intent
+User Goal
+  -> AgentPlan JSON
   -> Feature DAG
   -> Task DAG
   -> Intent IR
@@ -55,8 +56,8 @@ Every meaningful code change should be tied to a task, scoped to allowed files o
 
 The first version is intentionally CLI-first and local-first.
 
-- A CLI for planning, running, verifying, and reviewing AI-generated patches
-- Feature DAG and Task DAG generation from natural language requirements
+- A CLI for importing agent plans, running scoped tasks, verifying patches, and reviewing evidence
+- Feature DAG and Task DAG generation from strict AgentPlan JSON
 - Intent IR and task-scoped execution policy
 - Repository indexing for TypeScript projects
 - AST-based semantic diff
@@ -78,20 +79,20 @@ For an existing TypeScript repo:
 ```bash
 xiezhi init
 xiezhi index
-xiezhi plan "add team invitation feature"
+xiezhi agent plan "add team invitation feature" --runtime opencode
 xiezhi dag show
 xiezhi task list
-xiezhi task run task.add_create_invite_api --runtime opencode
+xiezhi agent run <task-id> --runtime opencode
 xiezhi verify <patch-id>
 xiezhi review <patch-id>
-xiezhi patch accept <patch-id>
+xiezhi patch promote <patch-id>
 ```
 
-For a greenfield app idea:
+For a greenfield app idea, the agent still writes the plan; XieZhi only validates and persists it:
 
 ```bash
 xiezhi init
-xiezhi bootstrap "build a bookkeeping app"
+xiezhi agent plan "build a bookkeeping app" --runtime opencode
 xiezhi dag show
 xiezhi task list
 ```
@@ -110,47 +111,6 @@ Warnings:
   - missing test: invitation expiry
 ```
 
-## Demo: Bootstrap a Bookkeeping App
-
-If the user is starting from a one-line product idea instead of an existing codebase change, XieZhi now has a separate bootstrap path:
-
-```bash
-xiezhi init
-xiezhi bootstrap "帮我做一个记账软件"
-xiezhi dag show
-xiezhi task list
-```
-
-That produces a starter plan without requiring `xiezhi index` first. A typical bootstrap output is:
-
-```text
-Feature: Bookkeeping app
-
-Tasks:
-  1. Define skeleton for bookkeeping app
-  2. Scaffold bookkeeping app shell and persistence
-  3. Implement first bookkeeping flow
-  4. Verify bookkeeping app bootstrap slice
-```
-
-The starter file scope is intentionally narrow, for example:
-
-```text
-package.json
-tsconfig.json
-src/app.tsx
-src/lib/storage.ts
-src/domain/ledger.ts
-src/features/transactions/transaction-form.tsx
-src/features/transactions/transaction-list.tsx
-src/features/categories/category-select.tsx
-src/features/budgets/monthly-budget.ts
-tests/transactions.test.ts
-tests/monthly-budget.test.ts
-```
-
-Once that bootstrap plan exists, the user can run one task at a time with the normal controlled patch loop.
-
 ## Demo: Budgeting App Increment
 
 Imagine a user is building a personal finance app and wants to add a monthly budget alert:
@@ -164,12 +124,12 @@ With XieZhi, the flow is narrower and easier to review:
 ```bash
 xiezhi init
 xiezhi index
-xiezhi plan "add monthly category budget alerts to the budgeting app"
+xiezhi agent plan "add monthly category budget alerts to the budgeting app" --runtime opencode
 xiezhi dag show
 xiezhi task list
 ```
 
-At this point, XieZhi can turn the request into a small task graph such as:
+At this point, the agent returns an AgentPlan that XieZhi validates into a small task graph such as:
 
 ```text
 Feature: Monthly category budget alerts
@@ -183,7 +143,7 @@ Tasks:
 Then the user runs one task in isolation:
 
 ```bash
-xiezhi task run <task-id> --runtime opencode
+xiezhi agent run <task-id> --runtime opencode
 ```
 
 XieZhi creates a dedicated git worktree for that task, injects the task goal and allowed file scope, and captures the resulting patch.
@@ -211,15 +171,15 @@ Warnings:
 If the patch looks good, the user can explicitly accept it:
 
 ```bash
-xiezhi patch accept <patch-id>
+xiezhi patch promote <patch-id>
 ```
 
 If the runtime edits something out of scope, like `src/auth/session.ts` or `src/settings/currency.ts`, XieZhi can reject the patch and tell the user to retry or discard it instead of silently letting unrelated changes through.
 
 ## Design Principles
 
-- OpenCode executes, XieZhi controls.
-- AI should operate inside tasks, not free-form sessions.
+- Agents plan and execute, XieZhi controls.
+- AI should operate through explicit task contracts, not free-form sessions.
 - Text diff is not enough; semantic diff matters.
 - Patch validation is mandatory.
 - Local execution comes first.
@@ -229,9 +189,9 @@ If the runtime edits something out of scope, like `src/auth/session.ts` or `src/
 This repo is now at a `v1 alpha` with real runtime bridges for the CLIs available on the local machine.
 
 - The control loop is real
-- OpenCode, Claude, and Codex share one runtime orchestration surface
+- OpenCode, Claude, and Codex share one runtime execution surface
 - Claude and Codex can use real CLI bridges when available
-- OpenCode degrades cleanly to a scaffold fallback when the CLI is unavailable
+- Agent planning requires a real planning runtime
 
 ## Alpha Smoke
 
@@ -258,7 +218,7 @@ pnpm link --global
 xiezhi doctor
 ```
 
-`xiezhi init` can now initialize a git repository for a plain directory. If the repo still has no commit yet, XieZhi will let you `bootstrap`, `index`, and `plan`, but it will ask for a baseline commit before `xiezhi task run`.
+`xiezhi init` can now initialize a git repository for a plain directory. If the repo still has no commit yet, XieZhi will let you run `agent plan`, but it will ask for a baseline commit before `xiezhi agent run`.
 
 More detailed install and preset guidance lives in [docs/install.md](/Users/terenceliu/Downloads/development/xiezhi/docs/install.md:1).
 
@@ -267,7 +227,7 @@ More detailed install and preset guidance lives in [docs/install.md](/Users/tere
 The immediate goal is to prove a tight v1 loop:
 
 1. Index a real TypeScript repository.
-2. Turn a natural language request into a runnable task graph.
+2. Import an agent's strict JSON plan into a runnable task graph.
 3. Execute one task in an isolated worktree.
 4. Produce a semantic diff and verification report.
 5. Accept a good patch or reject an out-of-scope one.

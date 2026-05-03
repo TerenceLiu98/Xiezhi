@@ -4,10 +4,11 @@ import { describe, expect, it } from "vitest"
 
 import { runIndexCommand } from "../src/commands/index.js"
 import { runInit } from "../src/commands/init.js"
-import { runBootstrapCommand, runPlanCommand } from "../src/commands/plan.js"
 import { runTaskRetryCommand, runTaskRunCommand } from "../src/commands/task.js"
 import { XieZhiError } from "../src/core/errors.js"
 import { openDatabaseConnection } from "../src/db/client.js"
+import { importAgentPlan } from "../src/services/planning-service.js"
+import { importRouterPlan, routerAgentPlan } from "./support/agent-plan-fixture.js"
 import { createTempDir, createTempTsRepo } from "./support/git-fixture.js"
 
 describe("task run command", () => {
@@ -15,7 +16,7 @@ describe("task run command", () => {
     const cwd = await createTempTsRepo("xiezhi-task-run-")
     await runInit(cwd)
     await runIndexCommand({ cwd, mode: "full" })
-    const plan = await runPlanCommand(cwd, "add user invitation flow")
+    const plan = importRouterPlan(cwd)
 
     const taskId = plan.tasks[0]?.id
     expect(taskId).toBeTruthy()
@@ -41,7 +42,7 @@ describe("task run command", () => {
       } | null
 
       expect(patchCount.count).toBe(1)
-      expect(taskStatus?.status).toBe("running")
+      expect(taskStatus?.status).toBe("patched")
     } finally {
       sqlite.close()
     }
@@ -51,7 +52,7 @@ describe("task run command", () => {
     const cwd = await createTempTsRepo("xiezhi-task-retry-")
     await runInit(cwd)
     await runIndexCommand({ cwd, mode: "full" })
-    const plan = await runPlanCommand(cwd, "add user invitation flow")
+    const plan = importRouterPlan(cwd)
 
     const taskId = plan.tasks[0]?.id
     expect(taskId).toBeTruthy()
@@ -88,7 +89,7 @@ describe("task run command", () => {
   it("requires a baseline commit before running tasks in an auto-initialized repo", async () => {
     const cwd = await createTempDir("xiezhi-task-run-unborn-")
     await runInit(cwd)
-    const plan = await runBootstrapCommand(cwd, "build a note taking app")
+    const plan = importAgentPlan(cwd, routerAgentPlan(), { runtimeName: "test-agent" })
 
     await expect(runTaskRunCommand(cwd, plan.tasks[0]!.id, "opencode")).rejects.toMatchObject({
       code: "CLI_USAGE_ERROR",

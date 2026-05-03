@@ -37,10 +37,10 @@
 - Deliverables:
   - `xiezhi init`
   - `xiezhi index`
-  - `xiezhi plan`
+  - `xiezhi agent plan`
   - `xiezhi dag show`
   - `xiezhi task list`
-  - `xiezhi task run`
+  - `xiezhi agent run`
   - `xiezhi verify`
   - `xiezhi review`
 - Acceptance:

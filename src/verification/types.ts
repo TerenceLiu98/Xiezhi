@@ -2,12 +2,14 @@ export type SemanticNodeSummary = {
   path: string
   kind: string
   symbol: string | null
+  hash?: string
 }
 
 export type SemanticDiffSummary = {
   changedFiles: string[]
   addedNodes: SemanticNodeSummary[]
   removedNodes: SemanticNodeSummary[]
+  modifiedNodes: SemanticNodeSummary[]
   addedExports: Array<{ path: string; symbol: string }>
   removedExports: Array<{ path: string; symbol: string }>
 }

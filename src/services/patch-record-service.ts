@@ -6,7 +6,7 @@ import { nowIso } from "../core/time.js"
 import type { XieZhiDatabase } from "../db/client.js"
 import { commandLogsTable, patchesTable } from "../db/schema.js"
 
-export type PatchStatus = "pending" | "verified" | "rejected" | "merged" | "discarded"
+export type PatchStatus = "pending" | "verified" | "rejected" | "merged" | "discarded" | "promoted"
 export type ActivePatchStatus = PatchStatus | "accepted"
 
 export type CreatePatchInput = {
@@ -14,10 +14,32 @@ export type CreatePatchInput = {
   baseCommit: string
   worktreePath: string
   runtimeName: RuntimeName
+  runtimeMode?: "real" | "scaffold"
+  runtimeEvidence?: PatchRuntimeEvidence
+  agentRunId?: string | null
   changedFiles: string[]
   diff?: string
   semanticDiffJson?: string | null
   status?: PatchStatus
+}
+
+export type PatchRuntimeEvidence = {
+  mode: "real" | "scaffold"
+  success: boolean
+  emptyPatch: boolean
+  eventCount: number
+  commandCount: number
+  latestCommand: string | null
+  latestCommandExitCode: number | null
+  message: string
+}
+
+export type PatchPromotionEvidence = {
+  promotedAt: string
+  repoRoot: string
+  committed: boolean
+  commitHash: string | null
+  changedFiles: string[]
 }
 
 export class PatchRecordService {
@@ -35,6 +57,9 @@ export class PatchRecordService {
         baseCommit: input.baseCommit,
         worktreePath: input.worktreePath,
         runtimeName: input.runtimeName,
+        runtimeMode: input.runtimeMode ?? input.runtimeEvidence?.mode ?? "scaffold",
+        runtimeEvidenceJson: input.runtimeEvidence ? JSON.stringify(input.runtimeEvidence) : null,
+        agentRunId: input.agentRunId ?? null,
         changedFilesJson: JSON.stringify(input.changedFiles),
         diff: input.diff ?? "",
         semanticDiffJson: input.semanticDiffJson ?? null,
@@ -92,11 +117,53 @@ export class PatchRecordService {
   }
 
   updatePatchSnapshot(patchId: string, input: { changedFiles: string[]; diff: string }) {
+    const existingPatch = this.db.select().from(patchesTable).where(eq(patchesTable.id, patchId)).get()
+    const existingEvidence = existingPatch?.runtimeEvidenceJson
+      ? (JSON.parse(existingPatch.runtimeEvidenceJson) as PatchRuntimeEvidence)
+      : null
+    const runtimeEvidenceJson = existingEvidence
+      ? JSON.stringify({
+          ...existingEvidence,
+          emptyPatch: input.changedFiles.length === 0,
+          message:
+            input.changedFiles.length === 0
+              ? existingEvidence.mode === "real"
+                ? "Runtime launched successfully but produced no captured edits."
+                : "Scaffold runtime completed without captured edits."
+              : `Runtime produced ${input.changedFiles.length} changed file${input.changedFiles.length === 1 ? "" : "s"}.`
+        } satisfies PatchRuntimeEvidence)
+      : undefined
+
     this.db
       .update(patchesTable)
       .set({
         changedFilesJson: JSON.stringify(input.changedFiles),
         diff: input.diff,
+        ...(runtimeEvidenceJson ? { runtimeEvidenceJson } : {}),
+        updatedAt: nowIso()
+      })
+      .where(eq(patchesTable.id, patchId))
+      .run()
+  }
+
+  updatePatchAgentRun(patchId: string, agentRunId: string) {
+    this.db
+      .update(patchesTable)
+      .set({
+        agentRunId,
+        updatedAt: nowIso()
+      })
+      .where(eq(patchesTable.id, patchId))
+      .run()
+  }
+
+  updatePatchPromotion(patchId: string, evidence: PatchPromotionEvidence) {
+    this.db
+      .update(patchesTable)
+      .set({
+        status: "promoted",
+        promotionJson: JSON.stringify(evidence),
+        promotedAt: evidence.promotedAt,
         updatedAt: nowIso()
       })
       .where(eq(patchesTable.id, patchId))
@@ -119,6 +186,8 @@ export class PatchRecordService {
     return {
       ...patch,
       changedFiles: JSON.parse(patch.changedFilesJson) as string[],
+      runtimeEvidence: patch.runtimeEvidenceJson ? (JSON.parse(patch.runtimeEvidenceJson) as PatchRuntimeEvidence) : null,
+      promotion: patch.promotionJson ? (JSON.parse(patch.promotionJson) as PatchPromotionEvidence) : null,
       semanticDiff: patch.semanticDiffJson ? (JSON.parse(patch.semanticDiffJson) as unknown) : null,
       commandLogs
     }
@@ -136,7 +205,8 @@ export class PatchRecordService {
       .filter((patch) => taskIds.includes(patch.taskId))
       .map((patch) => ({
         ...patch,
-        changedFiles: JSON.parse(patch.changedFilesJson) as string[]
+        changedFiles: JSON.parse(patch.changedFilesJson) as string[],
+        runtimeEvidence: patch.runtimeEvidenceJson ? (JSON.parse(patch.runtimeEvidenceJson) as PatchRuntimeEvidence) : null
       }))
   }
 }

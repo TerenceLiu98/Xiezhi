@@ -4,7 +4,7 @@ This file explains the current state of each runtime in the alpha.
 
 ## Shared Guarantees
 
-- All runtimes enter through `xiezhi task run`
+- The documented path enters through `xiezhi agent run`
 - All runtimes compile the same execution policy
 - All runtimes produce normalized events, command logs, and a patch record
 - Verification and review are runtime-agnostic once a patch exists
@@ -14,7 +14,7 @@ This file explains the current state of each runtime in the alpha.
 - Status: `alpha-demo`
 - Current mode: capability-aware adapter
 - What works:
-  - task orchestration
+  - scoped task execution
   - clean fallback when `opencode` is not installed
   - worktree isolation
   - patch persistence
@@ -51,7 +51,7 @@ This file explains the current state of each runtime in the alpha.
 
 Because runtime availability is machine-dependent, the most reliable demo flow today is:
 
-1. run `xiezhi task run ...`
+1. run `xiezhi agent run ...`
 2. if the adapter falls back, edit the generated worktree inside the planned scope
 3. run `xiezhi verify ...`
 4. run `xiezhi review ...`

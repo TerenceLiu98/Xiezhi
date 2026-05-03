@@ -6,13 +6,13 @@ export type FeatureStatus = z.infer<typeof featureStatusSchema>
 export const dagNodeTypeSchema = z.enum(["feature", "requirement", "task", "acceptance", "test"])
 export type DagNodeType = z.infer<typeof dagNodeTypeSchema>
 
-export const dagNodeStatusSchema = z.enum(["draft", "approved", "ready", "running", "verified", "rejected"])
+export const dagNodeStatusSchema = z.enum(["draft", "approved", "ready", "running", "patched", "verified", "promoted", "rejected", "failed"])
 export type DagNodeStatus = z.infer<typeof dagNodeStatusSchema>
 
 export const dagEdgeTypeSchema = z.enum(["contains", "informs", "depends_on", "satisfies", "validates"])
 export type DagEdgeType = z.infer<typeof dagEdgeTypeSchema>
 
-export const taskStatusSchema = z.enum(["draft", "ready", "running", "verified", "rejected"])
+export const taskStatusSchema = z.enum(["draft", "ready", "running", "patched", "verified", "promoted", "rejected", "failed"])
 export type TaskStatus = z.infer<typeof taskStatusSchema>
 
 export const scopeCandidateSchema = z.object({
@@ -33,7 +33,7 @@ export const inferredScopeSchema = z.object({
 })
 export type InferredScope = z.infer<typeof inferredScopeSchema>
 
-export const intentIrSchema = z.object({
+export const intentIrV1Schema = z.object({
   version: z.literal("v1"),
   goal: z.string(),
   summary: z.string(),
@@ -44,7 +44,63 @@ export const intentIrSchema = z.object({
   recommendedCommands: z.array(z.string()),
   rationale: z.array(z.string())
 })
+export const intentIrV2Schema = intentIrV1Schema.extend({
+  version: z.literal("v2"),
+  allowedSymbols: z.array(z.string()).default([]),
+  forbiddenSymbols: z.array(z.string()).default([]),
+  expectedOutputs: z.array(z.string()).default([])
+})
+export const intentIrSchema = z.union([intentIrV1Schema, intentIrV2Schema])
 export type IntentIr = z.infer<typeof intentIrSchema>
+
+export const agentPlanTaskSchema = z.object({
+  key: z.string().min(1),
+  title: z.string().min(1),
+  summary: z.string().min(1),
+  dependsOn: z.array(z.string()).default([]),
+  allowedFiles: z.array(z.string()).min(1),
+  forbiddenFiles: z.array(z.string()).default([".xiezhi/"]),
+  allowedSymbols: z.array(z.string()).default([]),
+  forbiddenSymbols: z.array(z.string()).default([]),
+  acceptance: z.array(z.string()).min(1),
+  checks: z.array(z.string()).default([]),
+  expectedOutputs: z.array(z.string()).default([]),
+  rationale: z.array(z.string()).default([])
+})
+export type AgentPlanTask = z.infer<typeof agentPlanTaskSchema>
+
+export const agentPlanV1Schema = z.object({
+  version: z.literal("v1"),
+  goal: z.string().min(1),
+  title: z.string().min(1),
+  requirements: z.array(z.string()).min(1),
+  tasks: z.array(agentPlanTaskSchema).min(1)
+})
+export type AgentPlanV1 = z.infer<typeof agentPlanV1Schema>
+
+export function getIntentAllowedSymbols(intent: IntentIr | null) {
+  if (!intent) {
+    return []
+  }
+  if (intent.version === "v2") {
+    return intent.allowedSymbols.length > 0 ? intent.allowedSymbols : intent.relatedSymbols
+  }
+  return intent.relatedSymbols
+}
+
+export function getIntentForbiddenSymbols(intent: IntentIr | null) {
+  if (!intent || intent.version !== "v2") {
+    return []
+  }
+  return intent.forbiddenSymbols
+}
+
+export function getIntentExpectedOutputs(intent: IntentIr | null) {
+  if (!intent || intent.version !== "v2") {
+    return []
+  }
+  return intent.expectedOutputs
+}
 
 export const plannedDagNodeSchema = z.object({
   id: z.string(),
@@ -120,6 +176,8 @@ export type PlanView = {
       id: string
       status: string
       runtimeName: string
+      runtimeMode: string
+      changedFiles: string[]
       updatedAt: string
     } | null
   }>

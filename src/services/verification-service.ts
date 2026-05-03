@@ -1,7 +1,9 @@
 import path from "node:path"
+import { existsSync } from "node:fs"
 
 import { and, eq, inArray } from "drizzle-orm"
 import { drizzle } from "drizzle-orm/better-sqlite3"
+import { execa } from "execa"
 
 import { XieZhiError } from "../core/errors.js"
 import { createId } from "../core/ids.js"
@@ -19,6 +21,7 @@ import { extractCodeGraph } from "../indexer/extractor.js"
 import { getSourceFilesByRelativePath, loadProject } from "../indexer/project-loader.js"
 import { runGit } from "../core/git.js"
 import type { IntentIr } from "../planning/types.js"
+import { getIntentAllowedSymbols, getIntentForbiddenSymbols } from "../planning/types.js"
 import type {
   ReviewPatchResult,
   SemanticDiffSummary,
@@ -54,13 +57,18 @@ function normalizeNodeSummary(nodes: Array<typeof codeNodesTable.$inferSelect>) 
       (node): SemanticNodeSummary => ({
         path: node.path,
         kind: node.kind,
-        symbol: node.symbol ?? null
+        symbol: node.symbol ?? null,
+        hash: node.hash
       })
     )
 }
 
 function nodeKey(node: SemanticNodeSummary) {
   return `${node.path}:${node.kind}:${node.symbol ?? ""}`
+}
+
+function symbolKey(value: string) {
+  return value.trim().toLowerCase()
 }
 
 function diffNodes(before: SemanticNodeSummary[], after: SemanticNodeSummary[]) {
@@ -73,6 +81,14 @@ function diffNodes(before: SemanticNodeSummary[], after: SemanticNodeSummary[]) 
       .map(([, node]) => node),
     removed: [...beforeMap.entries()]
       .filter(([key]) => !afterMap.has(key))
+      .map(([, node]) => node),
+    modified: [...afterMap.entries()]
+      .filter(([key, node]) => {
+        if (!beforeMap.has(key)) {
+          return false
+        }
+        return node.symbol !== null && beforeMap.get(key)?.hash !== node.hash
+      })
       .map(([, node]) => node)
   }
 }
@@ -136,6 +152,7 @@ export class VerificationService {
         changedFiles: input.changedFiles,
         addedNodes: [],
         removedNodes: [],
+        modifiedNodes: [],
         addedExports: [],
         removedExports: []
       }
@@ -163,7 +180,8 @@ export class VerificationService {
         (node): SemanticNodeSummary => ({
           path: node.path,
           kind: node.kind,
-          symbol: node.symbol ?? null
+          symbol: node.symbol ?? null,
+          hash: node.hash
         })
       )
 
@@ -178,6 +196,7 @@ export class VerificationService {
       changedFiles: input.changedFiles,
       addedNodes: nodeDiff.added,
       removedNodes: nodeDiff.removed,
+      modifiedNodes: nodeDiff.modified,
       addedExports: [...patchedExportSet.entries()]
         .filter(([key]) => !baselineExportSet.has(key))
         .map(([, value]) => value),
@@ -189,14 +208,17 @@ export class VerificationService {
 
   private buildChecks(intent: IntentIr | null, commandLogs: Array<{ command: string; exitCode: number; output: string }>) {
     const checks: VerificationCheckSummary[] = []
-    const seenTypes = new Set<string>()
+    const latestByType = new Map<ClassifiedCommandType, { command: string; exitCode: number; output: string }>()
 
     for (const log of commandLogs) {
       const type = classifyCommand(log.command)
       if (!type) {
         continue
       }
-      seenTypes.add(type)
+      latestByType.set(type, log)
+    }
+
+    for (const [type, log] of latestByType.entries()) {
       checks.push({
         type,
         status: log.exitCode === 0 ? "passed" : "failed",
@@ -210,7 +232,7 @@ export class VerificationService {
       .filter((value): value is ClassifiedCommandType => value !== null)
 
     for (const checkType of recommendedCheckTypes) {
-      if (seenTypes.has(checkType)) {
+      if (latestByType.has(checkType)) {
         continue
       }
       checks.push({
@@ -221,6 +243,47 @@ export class VerificationService {
     }
 
     return checks
+  }
+
+  private async runMissingRequiredChecks(input: {
+    worktreePath: string
+    intent: IntentIr | null
+    existingLogs: Array<{ command: string; exitCode: number; output: string }>
+    requiredCheckTypes: ClassifiedCommandType[]
+  }) {
+    if (!existsSync(path.join(input.worktreePath, "node_modules"))) {
+      return []
+    }
+
+    const passedTypes = new Set(
+      input.existingLogs
+        .filter((log) => log.exitCode === 0)
+        .map((log) => classifyCommand(log.command))
+        .filter((value): value is ClassifiedCommandType => value !== null)
+    )
+    const commands = unique(
+      (input.intent?.recommendedCommands ?? []).filter((command) => {
+        const type = classifyCommand(command)
+        return type !== null && input.requiredCheckTypes.includes(type) && !passedTypes.has(type)
+      })
+    )
+    const logs: Array<{ command: string; exitCode: number; output: string }> = []
+
+    for (const command of commands) {
+      const result = await execa(command, {
+        cwd: input.worktreePath,
+        shell: true,
+        reject: false,
+        timeout: 120_000
+      })
+      logs.push({
+        command,
+        exitCode: result.exitCode ?? 0,
+        output: [result.stdout, result.stderr].filter(Boolean).join("\n")
+      })
+    }
+
+    return logs
   }
 
   private collectRequiredCheckTypes(input: {
@@ -262,6 +325,38 @@ export class VerificationService {
     }
   }
 
+  private buildImplicitAllowedFiles(allowedFiles: string[]) {
+    const touchesTests = allowedFiles.some(
+      (file) => file.startsWith("tests/") || file.includes(".test.") || file.includes(".spec.")
+    )
+    const touchesPackageManifest = allowedFiles.includes("package.json")
+
+    return [
+      ...(touchesTests ? ["vitest.config.ts"] : []),
+      ...(touchesPackageManifest ? ["package-lock.json", "pnpm-lock.yaml", "yarn.lock"] : [])
+    ]
+  }
+
+  private matchesScope(filePath: string, scopes: Set<string>) {
+    for (const scope of scopes) {
+      if (scope === filePath) {
+        return true
+      }
+      if (scope.endsWith("/**")) {
+        const prefix = scope.slice(0, -2)
+        if (filePath.startsWith(prefix)) {
+          return true
+        }
+      }
+      if (scope.endsWith("/")) {
+        if (filePath.startsWith(scope)) {
+          return true
+        }
+      }
+    }
+    return false
+  }
+
   private buildViolations(input: {
     patchTaskId: string
     taskExists: boolean
@@ -272,13 +367,17 @@ export class VerificationService {
     checks: VerificationCheckSummary[]
     requiredCheckTypes: string[]
     acceptance: string[]
+    allowedSymbols: string[]
+    forbiddenSymbols: string[]
     worktreeHeadCommit: string | null
     baseCommit: string
   }) {
     const violations: VerificationViolationSummary[] = []
     const changedFileSet = new Set(input.changedFiles)
-    const allowedFileSet = new Set(input.allowedFiles)
+    const allowedFileSet = new Set([...input.allowedFiles, ...this.buildImplicitAllowedFiles(input.allowedFiles)])
     const forbiddenFileSet = new Set(input.forbiddenFiles)
+    const allowedSymbolSet = new Set(input.allowedSymbols.map(symbolKey))
+    const forbiddenSymbolSet = new Set(input.forbiddenSymbols.map(symbolKey))
 
     if (!input.taskExists) {
       violations.push({
@@ -296,7 +395,7 @@ export class VerificationService {
       })
     }
 
-    const unauthorizedFiles = input.changedFiles.filter((file) => !allowedFileSet.has(file))
+    const unauthorizedFiles = input.changedFiles.filter((file) => !this.matchesScope(file, allowedFileSet))
     if (unauthorizedFiles.length > 0) {
       violations.push({
         severity: "blocking",
@@ -305,12 +404,38 @@ export class VerificationService {
       })
     }
 
-    const forbiddenTouched = input.changedFiles.filter((file) => forbiddenFileSet.has(file))
+    const forbiddenTouched = input.changedFiles.filter((file) => this.matchesScope(file, forbiddenFileSet))
     if (forbiddenTouched.length > 0) {
       violations.push({
         severity: "blocking",
         type: "forbidden_scope_change",
         message: `Patch touched forbidden files: ${forbiddenTouched.join(", ")}`
+      })
+    }
+
+    const touchedSymbols = [...input.semanticDiff.addedNodes, ...input.semanticDiff.removedNodes, ...input.semanticDiff.modifiedNodes].filter(
+      (node) => node.symbol
+    )
+    const forbiddenSymbolsTouched = touchedSymbols.filter((node) => forbiddenSymbolSet.has(symbolKey(node.symbol ?? "")))
+    if (forbiddenSymbolsTouched.length > 0) {
+      violations.push({
+        severity: "blocking",
+        type: "semantic_scope_violation",
+        message: `Patch touched forbidden symbols: ${unique(forbiddenSymbolsTouched.map((node) => node.symbol ?? node.path)).join(", ")}`
+      })
+    }
+
+    const outOfScopeSymbols =
+      allowedSymbolSet.size === 0
+        ? []
+        : [...input.semanticDiff.removedNodes, ...input.semanticDiff.modifiedNodes]
+            .filter((node) => node.symbol)
+            .filter((node) => !allowedSymbolSet.has(symbolKey(node.symbol ?? "")))
+    if (outOfScopeSymbols.length > 0) {
+      violations.push({
+        severity: "blocking",
+        type: "semantic_scope_violation",
+        message: `Patch changed symbols outside the task contract: ${unique(outOfScopeSymbols.map((node) => node.symbol ?? node.path)).join(", ")}`
       })
     }
 
@@ -468,12 +593,10 @@ export class VerificationService {
     const currentPatchState = await capturePatchState(patch.worktreePath)
     const changedFiles = currentPatchState.changedFiles.length > 0 ? currentPatchState.changedFiles : patch.changedFiles
 
-    if (changedFiles.join("\n") !== patch.changedFiles.join("\n") || currentPatchState.diff !== (patch.diff ?? "")) {
-      patchService.updatePatchSnapshot(patchId, {
-        changedFiles,
-        diff: currentPatchState.diff
-      })
-    }
+    patchService.updatePatchSnapshot(patchId, {
+      changedFiles,
+      diff: currentPatchState.diff
+    })
 
     const semanticDiff = await this.buildSemanticDiff({
       repoId: repository.id,
@@ -481,12 +604,32 @@ export class VerificationService {
       worktreePath: patch.worktreePath,
       changedFiles
     })
-    const checks = this.buildChecks(intent, patch.commandLogs)
     const requiredCheckTypes = this.collectRequiredCheckTypes({
       taskTitle: intent?.goal ?? task?.id ?? patch.taskId,
       changedFiles,
       intent
     })
+    let commandLogs: Array<{ command: string; exitCode: number; output: string }> = patch.commandLogs
+    let checks = this.buildChecks(intent, commandLogs)
+    const requiredChecksToRun = checks.filter((check) => {
+      return (
+        (check.status === "missing" || check.status === "failed") &&
+        requiredCheckTypes.includes(check.type as ClassifiedCommandType)
+      )
+    })
+    if (requiredChecksToRun.length > 0) {
+      const generatedLogs = await this.runMissingRequiredChecks({
+        worktreePath: patch.worktreePath,
+        intent,
+        existingLogs: commandLogs,
+        requiredCheckTypes
+      })
+      if (generatedLogs.length > 0) {
+        patchService.appendCommandLogs(patchId, generatedLogs)
+        commandLogs = [...commandLogs, ...generatedLogs]
+        checks = this.buildChecks(intent, commandLogs)
+      }
+    }
     const worktreeHeadCommit = await this.getWorktreeHeadCommit(patch.worktreePath)
     const violations = this.buildViolations({
       patchTaskId: patch.taskId,
@@ -498,6 +641,8 @@ export class VerificationService {
       checks,
       requiredCheckTypes,
       acceptance: intent?.acceptance ?? [],
+      allowedSymbols: getIntentAllowedSymbols(intent),
+      forbiddenSymbols: getIntentForbiddenSymbols(intent),
       worktreeHeadCommit,
       baseCommit: patch.baseCommit
     })
@@ -522,7 +667,7 @@ export class VerificationService {
       taskId: task?.id ?? patch.taskId,
       runtimeName: patch.runtimeName,
       patchStatus: status === "rejected" ? "rejected" : patch.status === "accepted" ? "accepted" : "verified",
-      taskStatus: status === "rejected" ? "rejected" : task?.status ?? "verified",
+      taskStatus: status === "rejected" ? "rejected" : "verified",
       goal: intent?.goal ?? patch.taskId,
       changedFiles,
       semanticDiff,

@@ -22,14 +22,14 @@ Translate the technical orchestrator into product-facing and team-facing surface
 - version history that links goals, tasks, patches, and verification
 - risk report that explains scope, semantic impact, and checks in product language
 - policy templates for repository conventions
-- audit trail for supervisor decisions and accepted patches
+- audit trail for agent decisions and promoted patches
 - CI integration notes or command hooks
 
 ## Acceptance Criteria
 
 - a technical user can explain current project progress without reading raw database rows
 - accepted patches are traceable from user goal to task to patch to verification result
-- policy decisions and supervisor decisions are auditable
+- policy decisions and agent decisions are auditable
 - CI can consume or reproduce the key verification checks
 
 ## Dependencies

@@ -47,7 +47,7 @@ xiezhi index --full
 
 If the directory is not a git repository yet, `xiezhi init` will initialize one for you.
 
-If the repository has no commit yet, you can still run `xiezhi bootstrap`, `xiezhi index`, and `xiezhi plan`, but `xiezhi task run` will require a baseline commit first:
+If the repository has no commit yet, you can still run `xiezhi index` and `xiezhi agent plan`, but `xiezhi agent run` will require a baseline commit first:
 
 ```bash
 git add .

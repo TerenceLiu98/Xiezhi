@@ -123,6 +123,6 @@ Status: `todo`
   - latest command and runtime binary in task or patch views
   - explicit empty-patch messaging when real runtime execution succeeds without edits
 - Acceptance:
-  - `xiezhi task run` reports real or scaffold execution clearly
+  - `xiezhi agent run` reports real or scaffold execution clearly
   - `xiezhi task list` exposes latest patch runtime mode
   - empty patches are described as launched-but-no-edits rather than ambiguous success

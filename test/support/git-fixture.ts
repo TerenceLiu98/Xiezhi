@@ -123,3 +123,116 @@ export async function createTempTsRepo(prefix: string) {
 
   return cwd
 }
+
+export async function createTempNoteTakingRepo(prefix: string) {
+  const cwd = await createTempGitRepo(prefix)
+
+  await writeFile(
+    path.join(cwd, "package.json"),
+    JSON.stringify(
+      {
+        name: "note-fixture",
+        private: true,
+        type: "module",
+        scripts: {
+          test: "vitest run",
+          typecheck: "tsc --noEmit"
+        }
+      },
+      null,
+      2
+    ),
+    "utf8"
+  )
+
+  await writeFile(
+    path.join(cwd, "tsconfig.json"),
+    JSON.stringify(
+      {
+        compilerOptions: {
+          target: "ES2022",
+          module: "NodeNext",
+          moduleResolution: "NodeNext",
+          jsx: "react-jsx",
+          strict: true
+        },
+        include: ["src", "tests"]
+      },
+      null,
+      2
+    ),
+    "utf8"
+  )
+
+  await mkdir(path.join(cwd, "src"), { recursive: true })
+  await mkdir(path.join(cwd, "tests"), { recursive: true })
+
+  await writeFile(
+    path.join(cwd, "src", "notes.ts"),
+    [
+      "export type Note = {",
+      "  id: string",
+      "  title: string",
+      "  body: string",
+      "  tags: string[]",
+      "}",
+      "",
+      "export function listNotes(notes: Note[]) {",
+      "  return notes",
+      "}",
+      "",
+      "export function searchNotes(notes: Note[], query: string) {",
+      "  const normalized = query.toLowerCase()",
+      "  return notes.filter((note) => `${note.title} ${note.body}`.toLowerCase().includes(normalized))",
+      "}",
+      "",
+      "export function notesByTag(notes: Note[], tag: string) {",
+      "  return notes.filter((note) => note.tags.includes(tag))",
+      "}"
+    ].join("\n"),
+    "utf8"
+  )
+
+  await writeFile(
+    path.join(cwd, "src", "app.tsx"),
+    [
+      "import { listNotes, type Note } from './notes'",
+      "",
+      "const seedNotes: Note[] = [",
+      "  { id: '1', title: 'First note', body: 'Remember this', tags: ['personal'] }",
+      "]",
+      "",
+      "export const App = () => <main>{listNotes(seedNotes).length}</main>"
+    ].join("\n"),
+    "utf8"
+  )
+
+  await writeFile(
+    path.join(cwd, "tests", "notes.test.ts"),
+    [
+      "import { describe, expect, it } from 'vitest'",
+      "import { searchNotes, notesByTag, type Note } from '../src/notes'",
+      "",
+      "const notes: Note[] = [",
+      "  { id: '1', title: 'Recipe', body: 'Apple pie', tags: ['food'] },",
+      "  { id: '2', title: 'Trip', body: 'Dublin notes', tags: ['travel'] }",
+      "]",
+      "",
+      "describe('notes', () => {",
+      "  it('searches notes', () => {",
+      "    expect(searchNotes(notes, 'apple')).toHaveLength(1)",
+      "  })",
+      "",
+      "  it('filters by tag', () => {",
+      "    expect(notesByTag(notes, 'travel')).toHaveLength(1)",
+      "  })",
+      "})"
+    ].join("\n"),
+    "utf8"
+  )
+
+  await execa("git", ["add", "."], { cwd })
+  await execa("git", ["commit", "-m", "add note taking fixture"], { cwd })
+
+  return cwd
+}
