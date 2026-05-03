@@ -8,7 +8,7 @@ import { runIndexCommand } from "./commands/index.js"
 import { runInit } from "./commands/init.js"
 import { runPlanCommand } from "./commands/plan.js"
 import { runReviewCommand } from "./commands/review.js"
-import { runTaskDiscardCommand, runTaskListCommand, runTaskRetryCommand, runTaskRunCommand } from "./commands/task.js"
+import { runPatchAcceptCommand, runTaskDiscardCommand, runTaskListCommand, runTaskRetryCommand, runTaskRunCommand } from "./commands/task.js"
 import { runVerifyCommand } from "./commands/verify.js"
 import { loadProjectConfig } from "./config/loader.js"
 import { XieZhiError, toError } from "./core/errors.js"
@@ -28,7 +28,7 @@ import type { RuntimeName } from "./runtime/shared/index.js"
 const program = new Command()
 
 program
-  .name("xz")
+  .name("xiezhi")
   .description("XieZhi CLI")
   .version("0.1.0")
 
@@ -171,7 +171,7 @@ taskCommand
       printCard("Next Up", [
         `${formatStatus(readyTask.status)} ${readyTask.title}`,
         `task: ${shortenId(readyTask.id)}  full: ${readyTask.id}`,
-        `run: xz task run ${readyTask.id} --runtime opencode`
+        `run: xiezhi task run ${readyTask.id} --runtime opencode`
       ])
     }
 
@@ -180,7 +180,8 @@ taskCommand
         task.title,
         `Scope: ${task.scopeSummary}`,
         `Depends: ${formatInlineList(task.dependsOnTaskIds.map((id) => shortenId(id)), { emptyText: "none" })}`,
-        `Run: xz task run ${task.id} --runtime opencode`
+        `Patches: ${task.patchCount}${task.latestPatch ? ` · latest ${task.latestPatch.status} (${shortenId(task.latestPatch.id)})` : ""}`,
+        `Run: xiezhi task run ${task.id} --runtime opencode`
       ])
       printIndentedList("Files", task.allowedFiles, { emptyText: "n/a" })
       if (task.relatedSymbols.length > 0) {
@@ -284,6 +285,7 @@ program
       `task status: ${formatStatus(result.taskStatus)}`,
       `goal: ${result.goal}`,
       `changed files: ${result.changedFiles.length}`,
+      `required checks: ${result.requiredCheckTypes.join(", ") || "none"}`,
       `next step: ${result.nextStep}`
     ])
     printList(
@@ -331,7 +333,8 @@ program
       `task id: ${result.taskId}`,
       `runtime: ${result.runtimeName}`,
       `goal: ${result.goal}`,
-      `summary: ${result.summary}`
+      `summary: ${result.summary}`,
+      `required checks: ${result.requiredCheckTypes.join(", ") || "none"}`
     ])
     printList("Changed Files", result.changedFiles, { emptyText: "none" })
     printList(
@@ -364,6 +367,24 @@ program
     if ("export" in result && result.export) {
       printCard("Export", [`format: ${result.export.format}`, `path: ${result.export.outputPath}`])
     }
+  })
+
+const patchCommand = program.command("patch").description("Inspect or advance patch lifecycle state")
+
+patchCommand
+  .command("accept")
+  .description("Accept a verified patch")
+  .argument("<patchId>", "Patch id")
+  .action(async (patchId: string) => {
+    const result = await runPatchAcceptCommand(process.cwd(), patchId)
+    printSection("Patch Accept", [
+      `status: ${formatStatus(result.status)}`,
+      `patch id: ${result.patchId}`,
+      `task id: ${result.taskId}`,
+      `patch status: ${formatStatus(result.patchStatus)}`,
+      `task status: ${formatStatus(result.taskStatus)}`,
+      `next step: ${result.nextStep}`
+    ])
   })
 
 program.hook("preAction", async (thisCommand, actionCommand) => {
@@ -407,17 +428,17 @@ function defaultRecoveryHint(code: XieZhiError["code"]) {
   switch (code) {
     case "CONFIG_NOT_FOUND":
     case "PROJECT_NOT_INITIALIZED":
-      return "Run `xz init` in the repository root, then rerun the command."
+      return "Run `xiezhi init` in the repository root, then rerun the command."
     case "GIT_ERROR":
       return "Check that this directory is a git repo and the worktree path still exists."
     case "CLI_USAGE_ERROR":
-      return "Run the corresponding `xz ... --help` command or inspect `xz task list` for valid ids."
+      return "Run the corresponding `xiezhi ... --help` command or inspect `xiezhi task list` for valid ids."
     case "DATABASE_ERROR":
-      return "Re-run `xz init` if the local metadata directory was deleted or partially created."
+      return "Re-run `xiezhi init` if the local metadata directory was deleted or partially created."
     case "NOT_IMPLEMENTED":
       return "Choose one of the currently available runtimes or defer this workflow."
     case "CONFIG_INVALID":
-      return "Fix `.xiezhi/config.yaml` or regenerate it with `xz init`."
+      return "Fix `.xiezhi/config.yaml` or regenerate it with `xiezhi init`."
     default:
       return "Retry the command after checking the repository and XieZhi metadata state."
   }

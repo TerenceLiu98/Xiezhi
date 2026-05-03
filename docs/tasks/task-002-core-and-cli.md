@@ -35,14 +35,14 @@
 - Phase: `0`
 - Goal: define the public CLI surface early
 - Deliverables:
-  - `xz init`
-  - `xz index`
-  - `xz plan`
-  - `xz dag show`
-  - `xz task list`
-  - `xz task run`
-  - `xz verify`
-  - `xz review`
+  - `xiezhi init`
+  - `xiezhi index`
+  - `xiezhi plan`
+  - `xiezhi dag show`
+  - `xiezhi task list`
+  - `xiezhi task run`
+  - `xiezhi verify`
+  - `xiezhi review`
 - Acceptance:
   - all commands parse arguments and print structured placeholder output
 

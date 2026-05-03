@@ -15,8 +15,8 @@ Determine whether a generated patch should be accepted, rejected, or escalated w
 
 ## Deliverables
 
-- `xz verify <patch-id>` returns structured pass, warning, or rejection output
-- `xz review <patch-id>` produces a readable semantic review summary
+- `xiezhi verify <patch-id>` returns structured pass, warning, or rejection output
+- `xiezhi review <patch-id>` produces a readable semantic review summary
 - Blocking violations and warnings match the PRD definitions
 
 ## Acceptance Criteria

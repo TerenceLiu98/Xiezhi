@@ -7,6 +7,7 @@ import type { XieZhiDatabase } from "../db/client.js"
 import { commandLogsTable, patchesTable } from "../db/schema.js"
 
 export type PatchStatus = "pending" | "verified" | "rejected" | "merged" | "discarded"
+export type ActivePatchStatus = PatchStatus | "accepted"
 
 export type CreatePatchInput = {
   taskId: string
@@ -68,7 +69,7 @@ export class PatchRecordService {
       .run()
   }
 
-  updatePatchStatus(patchId: string, status: PatchStatus) {
+  updatePatchStatus(patchId: string, status: ActivePatchStatus) {
     this.db
       .update(patchesTable)
       .set({
@@ -121,5 +122,21 @@ export class PatchRecordService {
       semanticDiff: patch.semanticDiffJson ? (JSON.parse(patch.semanticDiffJson) as unknown) : null,
       commandLogs
     }
+  }
+
+  listPatchesForTaskIds(taskIds: string[]) {
+    if (taskIds.length === 0) {
+      return []
+    }
+
+    return this.db
+      .select()
+      .from(patchesTable)
+      .all()
+      .filter((patch) => taskIds.includes(patch.taskId))
+      .map((patch) => ({
+        ...patch,
+        changedFiles: JSON.parse(patch.changedFilesJson) as string[]
+      }))
   }
 }

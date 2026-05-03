@@ -115,5 +115,12 @@ export type PlanView = {
     acceptance: string[]
     recommendedCommands: string[]
     scopeSummary: string
+    patchCount: number
+    latestPatch: {
+      id: string
+      status: string
+      runtimeName: string
+      updatedAt: string
+    } | null
   }>
 }

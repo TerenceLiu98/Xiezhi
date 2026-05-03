@@ -36,6 +36,7 @@ export type VerifyPatchResult = {
   changedFiles: string[]
   semanticDiff: SemanticDiffSummary
   checks: VerificationCheckSummary[]
+  requiredCheckTypes: string[]
   blockingViolations: VerificationViolationSummary[]
   warnings: VerificationViolationSummary[]
   nextStep: string
@@ -51,6 +52,7 @@ export type ReviewPatchResult = {
   changedFiles: string[]
   semanticDiff: SemanticDiffSummary
   checks: VerificationCheckSummary[]
+  requiredCheckTypes: string[]
   warnings: VerificationViolationSummary[]
   blockingViolations: VerificationViolationSummary[]
   nextActions: string[]

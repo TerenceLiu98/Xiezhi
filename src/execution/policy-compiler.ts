@@ -25,7 +25,7 @@ export function compileExecutionPolicy(input: {
 }) {
   if (!input.policy || !input.intent) {
     throw new XieZhiError("CLI_USAGE_ERROR", "Task is missing policy or intent metadata.", {
-      hint: "Re-run `xz plan` so the task has compiled Intent IR before execution."
+      hint: "Re-run `xiezhi plan` so the task has compiled Intent IR before execution."
     })
   }
 

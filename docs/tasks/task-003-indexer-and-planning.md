@@ -148,4 +148,4 @@
 - Phase: `3`
 - Goal: render planned runnable tasks with status, dependencies, and initial scope
 - Acceptance:
-  - users can decide what to run next by reading `xz task list`
+  - users can decide what to run next by reading `xiezhi task list`

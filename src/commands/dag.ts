@@ -51,7 +51,10 @@ export async function runDagShowCommand(cwd: string, featureId?: string) {
         details: [
           `scope: ${task.scopeSummary}`,
           `files: ${task.allowedFiles.join(", ") || "n/a"}`,
-          `functions: ${task.relatedSymbols.join(", ") || "none"}`
+          `functions: ${task.relatedSymbols.join(", ") || "none"}`,
+          task.latestPatch
+            ? `latest patch: ${task.latestPatch.id} (${task.latestPatch.status} via ${task.latestPatch.runtimeName})`
+            : "latest patch: none"
         ]
       })),
       { prefix: "|- ", childIndent: "|  " }

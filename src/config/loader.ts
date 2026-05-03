@@ -17,7 +17,7 @@ export async function loadProjectConfig(cwd: string): Promise<ProjectConfig> {
 
   if (!existsSync(configPath)) {
     throw new XieZhiError("CONFIG_NOT_FOUND", "XieZhi config not found.", {
-      hint: "Run `xz init` in this repository first."
+      hint: "Run `xiezhi init` in this repository first."
     })
   }
 

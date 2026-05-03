@@ -23,7 +23,7 @@ export function assertDatabaseInitialized(cwd: string, sqlite: Database.Database
 
   if (!existsSync(databasePath)) {
     throw new XieZhiError("PROJECT_NOT_INITIALIZED", "XieZhi database not found.", {
-      hint: "Run `xz init` in this repository first."
+      hint: "Run `xiezhi init` in this repository first."
     })
   }
 
@@ -33,7 +33,7 @@ export function assertDatabaseInitialized(cwd: string, sqlite: Database.Database
 
   if (!repositoriesTable) {
     throw new XieZhiError("PROJECT_NOT_INITIALIZED", "XieZhi database is not initialized.", {
-      hint: "Run `xz init` in this repository first so migrations can create the required tables."
+      hint: "Run `xiezhi init` in this repository first so migrations can create the required tables."
     })
   }
 }

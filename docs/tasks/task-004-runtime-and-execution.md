@@ -32,7 +32,7 @@
 - Phase: `4`
 - Goal: deliver the first deep runtime path using OpenCode
 - Acceptance:
-  - `xz task run <task-id> --runtime opencode` can produce a patch record
+  - `xiezhi task run <task-id> --runtime opencode` can produce a patch record
 
 ## T044 Claude adapter
 

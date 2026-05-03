@@ -15,11 +15,11 @@ const DEFAULT_GLOBS = [
 ]
 
 function shouldIgnoreFile(filePath: string) {
+  const normalized = filePath.replace(/\\/g, "/")
   return (
-    filePath.includes("/node_modules/") ||
-    filePath.includes("/dist/") ||
-    filePath.includes("/.xiezhi/") ||
-    filePath.includes("/docs/")
+    normalized.includes("/node_modules/") ||
+    normalized.includes("/dist/") ||
+    normalized.includes("/docs/")
   )
 }
 
@@ -41,7 +41,10 @@ export function loadProject(repoRoot: string) {
   const sourceFiles = project
     .getSourceFiles()
     .filter((sourceFile) => !sourceFile.isDeclarationFile())
-    .filter((sourceFile) => !shouldIgnoreFile(sourceFile.getFilePath()))
+    .filter((sourceFile) => {
+      const relativePath = path.relative(repoRoot, sourceFile.getFilePath()).replace(/\\/g, "/")
+      return !relativePath.startsWith(".xiezhi/") && !shouldIgnoreFile(relativePath)
+    })
 
   return { project, sourceFiles }
 }

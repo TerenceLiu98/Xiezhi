@@ -11,7 +11,7 @@ Create a stable local developer foundation for building XieZhi.
 - Define top-level folder structure
 - Add config loading and environment handling
 - Create SQLite bootstrap and migration entrypoint
-- Stub the `xz` CLI commands
+- Stub the `xiezhi` CLI commands
 
 ## In Scope
 
@@ -34,14 +34,14 @@ Create a stable local developer foundation for building XieZhi.
 
 - Project scaffold compiles with `pnpm build`
 - Test runner works with at least one smoke test
-- `xz init`, `xz index`, `xz plan`, `xz task run`, `xz verify`, `xz review` exist as stubbed commands
+- `xiezhi init`, `xiezhi index`, `xiezhi plan`, `xiezhi task run`, `xiezhi verify`, `xiezhi review` exist as stubbed commands
 - SQLite database can be created locally
 - Drizzle schema and migration workflow are in place
 
 ## Acceptance Criteria
 
 - A new contributor can clone the repo and run install, test, and build without manual fixes
-- `xz init` creates the XieZhi local metadata directory and config file scaffold
+- `xiezhi init` creates the XieZhi local metadata directory and config file scaffold
 - Logging, config parsing, and DB bootstrap are reusable by all later phases
 
 ## Dependencies

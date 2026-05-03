@@ -2,11 +2,11 @@
 
 ## Current Recommendation
 
-The best path to the first real product loop is:
+The first real product loop is complete. The best next path is:
 
-1. Finish all `P0` items from Phase 0 to Phase 4 needed for `xz task run`.
-2. Then finish the minimum verification slice from Phase 5.
-3. Phase 6 is now the alpha bar. The next highest-leverage work is Phase 7 real runtime execution.
+1. Finish all `P0` items in Phase 9 so patch lifecycle, verification strictness, and operator acceptance match the PRD more closely.
+2. Then land the `P1` evidence and failure-clarity work in Phase 9.
+3. Only after the loop is hardened should we broaden planning and semantic policy in Phase 10.
 
 ## Backlog Summary
 
@@ -78,6 +78,20 @@ The best path to the first real product loop is:
 | T084 | Config profiles and presets | 8 | P1 | done | T041,T065 |
 | T085 | Operator release notes | 8 | P1 | done | T065,T066 |
 | T086 | External alpha feedback loop | 8 | P1 | done | T065,T085 |
+| T090 | Patch acceptance and promotion flow | 9 | P0 | todo | T046,T055 |
+| T091 | Patch integrity verifier rules | 9 | P0 | todo | T046,T055 |
+| T092 | Verification command policy hardening | 9 | P0 | todo | T041,T054,T055 |
+| T093 | Semantic diff completeness | 9 | P1 | todo | T050,T051 |
+| T094 | Review and verify evidence upgrade | 9 | P1 | todo | T056,T057,T093 |
+| T095 | Structured failure summaries in CLI | 9 | P1 | todo | T016,T064 |
+| T096 | Patch history and task linkage views | 9 | P1 | todo | T047,T090 |
+| T100 | Intent IR v2 schema and persistence | 10 | P1 | todo | T034,T035 |
+| T101 | Semantic policy compiler | 10 | P1 | todo | T041,T100 |
+| T102 | Semantic scope verifier | 10 | P1 | todo | T055,T101 |
+| T103 | Planner-backed DAG generation | 10 | P1 | todo | T032,T033,T035 |
+| T104 | Richer DAG model and status transitions | 10 | P1 | todo | T030,T031,T035,T103 |
+| T105 | Risk and dependency heuristics | 10 | P2 | todo | T055,T093 |
+| T106 | Acceptance traceability and goal-match scoring | 10 | P2 | todo | T094,T103 |
 
 ## First Build Slice
 

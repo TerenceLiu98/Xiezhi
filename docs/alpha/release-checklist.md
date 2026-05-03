@@ -4,12 +4,12 @@ Use this checklist before calling the current branch `v1 alpha` ready.
 
 ## Core Loop
 
-- `xz init` creates `.xiezhi/`, config, and database without manual fixes
-- `xz index --full` completes on the demo repo
-- `xz plan "<request>"` creates a feature and three runnable tasks
-- `xz task run <task-id> --runtime opencode` creates a worktree and patch record
-- `xz verify <patch-id>` returns a structured result
-- `xz review <patch-id>` returns a semantic summary
+- `xiezhi init` creates `.xiezhi/`, config, and database without manual fixes
+- `xiezhi index --full` completes on the demo repo
+- `xiezhi plan "<request>"` creates a feature and three runnable tasks
+- `xiezhi task run <task-id> --runtime opencode` creates a worktree and patch record
+- `xiezhi verify <patch-id>` returns a structured result
+- `xiezhi review <patch-id>` returns a semantic summary
 
 ## Alpha Demo Paths
 

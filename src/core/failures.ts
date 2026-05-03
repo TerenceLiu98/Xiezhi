@@ -26,14 +26,14 @@ export function summarizeFailure(error: unknown): FailureSummary {
           failureType: "config_failed",
           failureStage: "config",
           message: error.message,
-          nextAction: error.hint ?? "Run `xz init` or repair the config file."
+          nextAction: error.hint ?? "Run `xiezhi init` or repair the config file."
         }
       case "DATABASE_ERROR":
         return {
           failureType: "database_failed",
           failureStage: "database",
           message: error.message,
-          nextAction: error.hint ?? "Re-run `xz init` or inspect the local SQLite metadata store."
+          nextAction: error.hint ?? "Re-run `xiezhi init` or inspect the local SQLite metadata store."
         }
       case "GIT_ERROR":
         return {

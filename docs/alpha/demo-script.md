@@ -13,11 +13,11 @@ pnpm smoke:alpha
 ## Manual Walkthrough
 
 ```bash
-xz init
-xz index --full
-xz plan "update router user flow"
-xz task list
-xz task run <task-id> --runtime opencode
+xiezhi init
+xiezhi index --full
+xiezhi plan "update router user flow"
+xiezhi task list
+xiezhi task run <task-id> --runtime opencode
 ```
 
 At this point XieZhi prints the worktree path. Open that worktree and make one of the following edits:
@@ -28,8 +28,8 @@ At this point XieZhi prints the worktree path. Open that worktree and make one o
 - Run:
 
 ```bash
-xz verify <patch-id>
-xz review <patch-id>
+xiezhi verify <patch-id>
+xiezhi review <patch-id>
 ```
 
 Expected result: `warning`
@@ -41,8 +41,8 @@ Expected result: `warning`
 - Run:
 
 ```bash
-xz verify <patch-id>
-xz review <patch-id>
+xiezhi verify <patch-id>
+xiezhi review <patch-id>
 ```
 
 Expected result: `accepted`
@@ -53,7 +53,7 @@ Expected result: `accepted`
 - Run:
 
 ```bash
-xz verify <patch-id>
+xiezhi verify <patch-id>
 ```
 
 Expected result: `rejected`
@@ -61,7 +61,7 @@ Expected result: `rejected`
 ## Recovery Demo
 
 ```bash
-xz task discard <patch-id>
+xiezhi task discard <patch-id>
 # or
-xz task retry <patch-id> --runtime codex
+xiezhi task retry <patch-id> --runtime codex
 ```

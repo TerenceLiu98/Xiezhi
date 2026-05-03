@@ -3,10 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "license": "AGPL-3.0-or-later",
   "description": "Controlled vibe coding platform for AI-assisted software development.",
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "packageManager": "pnpm@10.11.0",
   "pnpm": {
@@ -19,7 +21,7 @@
     "node": ">=22.0.0"
   },
   "bin": {
-    "xz": "./dist/cli.js"
+    "xiezhi": "./dist/cli.js"
   },
   "scripts": {
     "build": "tsup src/cli.ts --format esm --dts --target node22 --clean --out-dir dist",

@@ -17,11 +17,16 @@ import { createTempTsRepo } from "./support/git-fixture.js"
 
 type PlannedTaskSummary = {
   id: string
+  title: string
   allowedFiles: string[]
 }
 
 function selectTaskForAcceptedFlow(tasks: PlannedTaskSummary[]) {
   return tasks.find((task) => task.allowedFiles.some((file) => file.includes(".test.") || file.includes(".spec."))) ?? tasks[0]!
+}
+
+function selectTaskForWarningFlow(tasks: PlannedTaskSummary[]) {
+  return tasks.find((task) => task.title.startsWith("Confirm")) ?? tasks[0]!
 }
 
 async function appendPassingVerificationLogs(cwd: string, patchId: string) {
@@ -53,7 +58,7 @@ describe("alpha smoke flows", () => {
     await runInit(cwd)
     await runIndexCommand({ cwd, mode: "full" })
     const plan = await runPlanCommand(cwd, "update router user flow")
-    const task = selectTaskForAcceptedFlow(plan.tasks)
+    const task = selectTaskForWarningFlow(plan.tasks)
 
     const taskRun = await runTaskRunCommand(cwd, task.id, "opencode")
     const verify = await runVerifyCommand(cwd, taskRun.patchId)

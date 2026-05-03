@@ -84,6 +84,15 @@ export type TaskDiscardResult = {
   nextStep: string
 }
 
+export type PatchAcceptResult = {
+  status: "accepted"
+  patchId: string
+  taskId: string
+  patchStatus: "accepted"
+  taskStatus: string
+  nextStep: string
+}
+
 export class TaskRunService {
   constructor(private readonly db: XieZhiDatabase) {}
 
@@ -92,7 +101,7 @@ export class TaskRunService {
 
     if (!task) {
       throw new XieZhiError("CLI_USAGE_ERROR", `Task ${taskId} was not found.`, {
-        hint: "Run `xz task list` to inspect available tasks."
+        hint: "Run `xiezhi task list` to inspect available tasks."
       })
     }
 
@@ -207,11 +216,11 @@ export class TaskRunService {
       success: runtimeResult.success,
       nextStep: runtimeResult.success
         ? patchState.changedFiles.length > 0
-          ? `Run \`xz verify ${patchId}\` to verify the current worktree patch.`
+          ? `Run \`xiezhi verify ${patchId}\` to verify the current worktree patch.`
           : runtimeResult.mode === "real"
-            ? `The runtime completed without captured edits. Edit ${worktree.path}, then run \`xz verify ${patchId}\` or \`xz task retry ${patchId} --runtime ${runtime}\`.`
-            : `This run used the scaffold adapter. Edit ${worktree.path}, then run \`xz verify ${patchId}\` or \`xz task retry ${patchId} --runtime ${runtime}\`.`
-        : `Review the command summary, then retry with \`xz task retry ${patchId} --runtime ${runtime}\` or discard with \`xz task discard ${patchId}\`.`,
+            ? `The runtime completed without captured edits. Edit ${worktree.path}, then run \`xiezhi verify ${patchId}\` or \`xiezhi task retry ${patchId} --runtime ${runtime}\`.`
+            : `This run used the scaffold adapter. Edit ${worktree.path}, then run \`xiezhi verify ${patchId}\` or \`xiezhi task retry ${patchId} --runtime ${runtime}\`.`
+        : `Review the command summary, then retry with \`xiezhi task retry ${patchId} --runtime ${runtime}\` or discard with \`xiezhi task discard ${patchId}\`.`,
       timeline,
       commands: runtimeResult.commandLogs.map((log) => ({
         command: log.command,
@@ -249,7 +258,7 @@ export class TaskRunService {
       patchStatus: "discarded",
       taskStatus: "ready",
       removedWorktree: patch.worktreePath,
-      nextStep: `Re-run \`xz task run ${patch.taskId} --runtime ${patch.runtimeName}\` when you want to retry.`
+      nextStep: `Re-run \`xiezhi task run ${patch.taskId} --runtime ${patch.runtimeName}\` when you want to retry.`
     }
   }
 
@@ -259,7 +268,7 @@ export class TaskRunService {
 
     if (!patch) {
       throw new XieZhiError("CLI_USAGE_ERROR", `Patch ${patchId} was not found.`, {
-        hint: "Run `xz review <patch-id>` or inspect the patches table to find a valid patch id."
+        hint: "Run `xiezhi review <patch-id>` or inspect the patches table to find a valid patch id."
       })
     }
 
@@ -283,6 +292,42 @@ export class TaskRunService {
       ...rerun,
       status: "retried",
       previousPatchId: patchId
+    }
+  }
+
+  async acceptPatch(_cwd: string, patchId: string): Promise<PatchAcceptResult> {
+    const patchService = new PatchRecordService(this.db)
+    const patch = patchService.getPatch(patchId)
+
+    if (!patch) {
+      throw new XieZhiError("CLI_USAGE_ERROR", `Patch ${patchId} was not found.`, {
+        hint: "Run `xiezhi review <patch-id>` or inspect available patch ids before accepting one."
+      })
+    }
+
+    if (patch.status === "rejected" || patch.status === "discarded") {
+      throw new XieZhiError("CLI_USAGE_ERROR", `Patch ${patchId} cannot be accepted from status ${patch.status}.`, {
+        hint: "Only verified patches can be accepted. Retry or rerun verification first."
+      })
+    }
+
+    if (patch.status === "pending") {
+      throw new XieZhiError("CLI_USAGE_ERROR", `Patch ${patchId} has not been verified yet.`, {
+        hint: `Run \`xiezhi verify ${patchId}\` first, then accept it if the result is satisfactory.`
+      })
+    }
+
+    patchService.updatePatchStatus(patchId, "accepted")
+
+    const task = this.db.select().from(tasksTable).where(eq(tasksTable.id, patch.taskId)).get()
+
+    return {
+      status: "accepted",
+      patchId,
+      taskId: patch.taskId,
+      patchStatus: "accepted",
+      taskStatus: task?.status ?? "verified",
+      nextStep: "Patch accepted. Review the worktree or carry it into your normal merge flow when ready."
     }
   }
 }
@@ -315,6 +360,17 @@ export async function retryPatch(cwd: string, patchId: string, runtimeOverride?:
     assertDatabaseInitialized(cwd, sqlite)
     const service = new TaskRunService(drizzle(sqlite, { schema }))
     return await service.retryPatch(cwd, patchId, runtimeOverride)
+  } finally {
+    sqlite.close()
+  }
+}
+
+export async function acceptPatch(cwd: string, patchId: string) {
+  const sqlite = openDatabaseConnection(cwd)
+  try {
+    assertDatabaseInitialized(cwd, sqlite)
+    const service = new TaskRunService(drizzle(sqlite, { schema }))
+    return await service.acceptPatch(cwd, patchId)
   } finally {
     sqlite.close()
   }

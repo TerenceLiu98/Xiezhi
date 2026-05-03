@@ -4,7 +4,7 @@ This file explains the current state of each runtime in the alpha.
 
 ## Shared Guarantees
 
-- All runtimes enter through `xz task run`
+- All runtimes enter through `xiezhi task run`
 - All runtimes compile the same execution policy
 - All runtimes produce normalized events, command logs, and a patch record
 - Verification and review are runtime-agnostic once a patch exists
@@ -51,9 +51,9 @@ This file explains the current state of each runtime in the alpha.
 
 Because runtime availability is machine-dependent, the most reliable demo flow today is:
 
-1. run `xz task run ...`
+1. run `xiezhi task run ...`
 2. if the adapter falls back, edit the generated worktree inside the planned scope
-3. run `xz verify ...`
-4. run `xz review ...`
+3. run `xiezhi verify ...`
+4. run `xiezhi review ...`
 
 That flow exercises the real XieZhi control layer while we postpone deeper runtime execution to Phase 7.

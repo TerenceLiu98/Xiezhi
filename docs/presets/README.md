@@ -8,11 +8,11 @@ XieZhi ships two documented configuration presets for the current alpha:
 You can apply them during setup with:
 
 ```bash
-xz init --preset local-fast
+xiezhi init --preset local-fast
 ```
 
 or:
 
 ```bash
-xz init --preset ci-guarded
+xiezhi init --preset ci-guarded
 ```

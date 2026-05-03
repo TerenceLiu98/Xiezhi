@@ -17,6 +17,7 @@ import {
 } from "../db/schema.js"
 import { extractCodeGraph } from "../indexer/extractor.js"
 import { getSourceFilesByRelativePath, loadProject } from "../indexer/project-loader.js"
+import { runGit } from "../core/git.js"
 import type { IntentIr } from "../planning/types.js"
 import type {
   ReviewPatchResult,
@@ -40,6 +41,10 @@ function safeJsonParse<T>(value: string | null, fallback: T): T {
   } catch {
     return fallback
   }
+}
+
+function unique<T>(values: T[]) {
+  return [...new Set(values)]
 }
 
 function normalizeNodeSummary(nodes: Array<typeof codeNodesTable.$inferSelect>) {
@@ -98,12 +103,8 @@ type ClassifiedCommandType = Exclude<ReturnType<typeof classifyCommand>, null>
 export class VerificationService {
   constructor(private readonly db: XieZhiDatabase) {}
 
-  private getTask(taskId: string) {
-    const task = this.db.select().from(tasksTable).where(eq(tasksTable.id, taskId)).get()
-    if (!task) {
-      throw new XieZhiError("CLI_USAGE_ERROR", `Task ${taskId} was not found for verification.`)
-    }
-    return task
+  private findTask(taskId: string) {
+    return this.db.select().from(tasksTable).where(eq(tasksTable.id, taskId)).get() ?? null
   }
 
   private async collectExports(repoRoot: string, changedFiles: string[]) {
@@ -222,18 +223,78 @@ export class VerificationService {
     return checks
   }
 
+  private collectRequiredCheckTypes(input: {
+    taskTitle: string
+    changedFiles: string[]
+    intent: IntentIr | null
+  }) {
+    const recommendedTypes = unique(
+      (input.intent?.recommendedCommands ?? [])
+        .map((command) => classifyCommand(command))
+        .filter((value): value is ClassifiedCommandType => value !== null)
+    )
+
+    const required = new Set<ClassifiedCommandType>()
+    const taskTitle = input.taskTitle.toLowerCase()
+    const touchesTestFile = input.changedFiles.some((file) => file.includes(".test.") || file.includes(".spec."))
+
+    if (taskTitle.startsWith("verify ")) {
+      if (recommendedTypes.includes("typecheck")) {
+        required.add("typecheck")
+      }
+      if (recommendedTypes.includes("test")) {
+        required.add("test")
+      }
+    }
+
+    if (touchesTestFile && recommendedTypes.includes("test")) {
+      required.add("test")
+    }
+
+    return [...required]
+  }
+
+  private async getWorktreeHeadCommit(worktreePath: string) {
+    try {
+      return (await runGit(["rev-parse", "HEAD"], worktreePath)).stdout.trim()
+    } catch {
+      return null
+    }
+  }
+
   private buildViolations(input: {
+    patchTaskId: string
+    taskExists: boolean
     changedFiles: string[]
     allowedFiles: string[]
     forbiddenFiles: string[]
     semanticDiff: SemanticDiffSummary
     checks: VerificationCheckSummary[]
+    requiredCheckTypes: string[]
     acceptance: string[]
+    worktreeHeadCommit: string | null
+    baseCommit: string
   }) {
     const violations: VerificationViolationSummary[] = []
     const changedFileSet = new Set(input.changedFiles)
     const allowedFileSet = new Set(input.allowedFiles)
     const forbiddenFileSet = new Set(input.forbiddenFiles)
+
+    if (!input.taskExists) {
+      violations.push({
+        severity: "blocking",
+        type: "missing_task_binding",
+        message: `Patch is bound to task ${input.patchTaskId}, but that task no longer exists.`
+      })
+    }
+
+    if (input.worktreeHeadCommit !== null && input.worktreeHeadCommit !== input.baseCommit) {
+      violations.push({
+        severity: "blocking",
+        type: "base_commit_mismatch",
+        message: `Worktree HEAD ${input.worktreeHeadCommit} no longer matches recorded base commit ${input.baseCommit}.`
+      })
+    }
 
     const unauthorizedFiles = input.changedFiles.filter((file) => !allowedFileSet.has(file))
     if (unauthorizedFiles.length > 0) {
@@ -262,12 +323,34 @@ export class VerificationService {
       })
     }
 
+    const missingRequiredChecks = input.checks.filter((check) => {
+      return check.status === "missing" && input.requiredCheckTypes.includes(check.type)
+    })
+    if (missingRequiredChecks.length > 0) {
+      violations.push({
+        severity: "blocking",
+        type: "required_check_missing",
+        message: `Required verification commands did not run: ${missingRequiredChecks.map((check) => check.type).join(", ")}`
+      })
+    }
+
     const hasTestCheck = input.checks.some((check) => check.type === "test" && check.status === "passed")
     if (!hasTestCheck) {
       violations.push({
         severity: "warning",
         type: "missing_tests",
         message: "No passing test command was recorded for this patch."
+      })
+    }
+
+    const removedTestNodes = input.semanticDiff.removedNodes.filter((node) => {
+      return node.kind === "test" || node.path.includes(".test.") || node.path.includes(".spec.")
+    })
+    if (removedTestNodes.length > 0) {
+      violations.push({
+        severity: "blocking",
+        type: "existing_test_deleted",
+        message: `Patch removed existing test coverage in: ${unique(removedTestNodes.map((node) => node.path)).join(", ")}`
       })
     }
 
@@ -298,13 +381,14 @@ export class VerificationService {
 
   private persistVerification(input: {
     patchId: string
-    taskId: string
+    taskId?: string | null
     status: "accepted" | "warning" | "rejected"
     semanticDiff: SemanticDiffSummary
     checks: VerificationCheckSummary[]
     violations: VerificationViolationSummary[]
   }) {
     const timestamp = nowIso()
+    const existingPatch = this.db.select().from(patchesTable).where(eq(patchesTable.id, input.patchId)).get()
 
     this.db.delete(checksTable).where(eq(checksTable.patchId, input.patchId)).run()
     this.db.delete(violationsTable).where(eq(violationsTable.patchId, input.patchId)).run()
@@ -313,20 +397,27 @@ export class VerificationService {
       .update(patchesTable)
       .set({
         semanticDiffJson: JSON.stringify(input.semanticDiff),
-        status: input.status === "rejected" ? "rejected" : "verified",
+        status:
+          input.status === "rejected"
+            ? "rejected"
+            : existingPatch?.status === "accepted"
+              ? "accepted"
+              : "verified",
         updatedAt: timestamp
       })
       .where(eq(patchesTable.id, input.patchId))
       .run()
 
-    this.db
-      .update(tasksTable)
-      .set({
-        status: input.status === "rejected" ? "rejected" : "verified",
-        updatedAt: timestamp
-      })
-      .where(eq(tasksTable.id, input.taskId))
-      .run()
+    if (input.taskId) {
+      this.db
+        .update(tasksTable)
+        .set({
+          status: input.status === "rejected" ? "rejected" : "verified",
+          updatedAt: timestamp
+        })
+        .where(eq(tasksTable.id, input.taskId))
+        .run()
+    }
 
     if (input.checks.length > 0) {
       this.db
@@ -372,8 +463,8 @@ export class VerificationService {
 
     const repositoryService = new RepositoryMetadataService(this.db)
     const repository = await repositoryService.refreshForCwd(cwd)
-    const task = this.getTask(patch.taskId)
-    const intent = safeJsonParse<IntentIr | null>(task.intentIrJson, null)
+    const task = this.findTask(patch.taskId)
+    const intent = safeJsonParse<IntentIr | null>(task?.intentIrJson ?? null, null)
     const currentPatchState = await capturePatchState(patch.worktreePath)
     const changedFiles = currentPatchState.changedFiles.length > 0 ? currentPatchState.changedFiles : patch.changedFiles
 
@@ -391,13 +482,24 @@ export class VerificationService {
       changedFiles
     })
     const checks = this.buildChecks(intent, patch.commandLogs)
+    const requiredCheckTypes = this.collectRequiredCheckTypes({
+      taskTitle: intent?.goal ?? task?.id ?? patch.taskId,
+      changedFiles,
+      intent
+    })
+    const worktreeHeadCommit = await this.getWorktreeHeadCommit(patch.worktreePath)
     const violations = this.buildViolations({
+      patchTaskId: patch.taskId,
+      taskExists: task !== null,
       changedFiles,
       allowedFiles: intent?.allowedFiles ?? [],
       forbiddenFiles: intent?.forbiddenFiles ?? [],
       semanticDiff,
       checks,
-      acceptance: intent?.acceptance ?? []
+      requiredCheckTypes,
+      acceptance: intent?.acceptance ?? [],
+      worktreeHeadCommit,
+      baseCommit: patch.baseCommit
     })
 
     const blockingViolations = violations.filter((violation) => violation.severity === "blocking")
@@ -407,7 +509,7 @@ export class VerificationService {
 
     this.persistVerification({
       patchId,
-      taskId: task.id,
+      taskId: task?.id ?? null,
       status,
       semanticDiff,
       checks,
@@ -417,22 +519,23 @@ export class VerificationService {
     return {
       status,
       patchId,
-      taskId: task.id,
+      taskId: task?.id ?? patch.taskId,
       runtimeName: patch.runtimeName,
-      patchStatus: status === "rejected" ? "rejected" : "verified",
-      taskStatus: status === "rejected" ? "rejected" : "verified",
-      goal: intent?.goal ?? task.id,
+      patchStatus: status === "rejected" ? "rejected" : patch.status === "accepted" ? "accepted" : "verified",
+      taskStatus: status === "rejected" ? "rejected" : task?.status ?? "verified",
+      goal: intent?.goal ?? patch.taskId,
       changedFiles,
       semanticDiff,
       checks,
+      requiredCheckTypes,
       blockingViolations,
       warnings,
       nextStep:
         status === "rejected"
-          ? `Blocking issues found. Run \`xz task discard ${patchId}\` or \`xz task retry ${patchId} --runtime ${patch.runtimeName}\`.`
+          ? `Blocking issues found. Run \`xiezhi task discard ${patchId}\` or \`xiezhi task retry ${patchId} --runtime ${patch.runtimeName}\`.`
           : status === "warning"
-            ? `Warnings remain. Edit ${patch.worktreePath} and rerun \`xz verify ${patchId}\`, or run \`xz review ${patchId}\` for a summary now.`
-            : `Patch passed verification. Run \`xz review ${patchId}\` for a final semantic summary.`
+            ? `Warnings remain. Edit ${patch.worktreePath} and rerun \`xiezhi verify ${patchId}\`, or run \`xiezhi review ${patchId}\` for a summary now.`
+            : `Patch passed verification. Run \`xiezhi review ${patchId}\` for a final semantic summary, then \`xiezhi patch accept ${patchId}\` when you are ready to accept it.`
     }
   }
 
@@ -460,12 +563,16 @@ export class VerificationService {
       changedFiles: verification.changedFiles,
       semanticDiff: verification.semanticDiff,
       checks: verification.checks,
+      requiredCheckTypes: verification.requiredCheckTypes,
       warnings: verification.warnings,
       blockingViolations: verification.blockingViolations,
       nextActions: [
         verification.nextStep,
+        verification.status === "accepted"
+          ? `If the review looks good, accept it with \`xiezhi patch accept ${patchId}\`.`
+          : "Resolve blocking issues or warnings before final acceptance.",
         verification.changedFiles.length === 0
-          ? `No edits were captured. Add changes in ${patch.worktreePath} or rerun \`xz task retry ${patchId} --runtime ${patch.runtimeName}\`.`
+          ? `No edits were captured. Add changes in ${patch.worktreePath} or rerun \`xiezhi task retry ${patchId} --runtime ${patch.runtimeName}\`.`
           : "Inspect the semantic diff and changed files before merging."
       ]
     }

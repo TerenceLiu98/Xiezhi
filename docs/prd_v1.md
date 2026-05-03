@@ -220,7 +220,7 @@ Verification:
 用户运行：
 
 ```bash
-xz task run task.add_create_invite_api --runtime opencode
+xiezhi task run task.add_create_invite_api --runtime opencode
 ```
 
 OpenCode 生成 patch 后，系统检测到：
@@ -289,14 +289,14 @@ v1 优先支持：
 v1 以 CLI 为主：
 
 ```bash
-xz init
-xz index
-xz plan "add team invitation feature"
-xz dag show
-xz task list
-xz task run <task-id> --runtime opencode
-xz verify <patch-id>
-xz review <patch-id>
+xiezhi init
+xiezhi index
+xiezhi plan "add team invitation feature"
+xiezhi dag show
+xiezhi task list
+xiezhi task run <task-id> --runtime opencode
+xiezhi verify <patch-id>
+xiezhi review <patch-id>
 ```
 
 Dashboard 可以作为 v1.1，不是 v1 必须项。
@@ -328,7 +328,7 @@ v1 支持的目标 runtime：
 
 v1 不要求覆盖所有软件开发场景，但必须打穿以下最小闭环：
 
-1. 在一个真实的 TypeScript repo 中完成 `xz init` 和 `xz index`。
+1. 在一个真实的 TypeScript repo 中完成 `xiezhi init` 和 `xiezhi index`。
 2. 用户输入一个新增功能型需求，系统生成 Feature DAG 和 Task DAG。
 3. 用户运行一个 task，OpenCode 在独立 worktree 中生成 patch。
 4. 系统输出 semantic diff、test 结果和 verifier 结果。
@@ -541,7 +541,7 @@ Controlled Patch 必须包含：
 命令：
 
 ```bash
-xz init
+xiezhi init
 ```
 
 结果：
@@ -581,7 +581,7 @@ policy:
 命令：
 
 ```bash
-xz index
+xiezhi index
 ```
 
 系统执行：
@@ -609,7 +609,7 @@ Indexed repo:
 命令：
 
 ```bash
-xz plan "add team invitation feature"
+xiezhi plan "add team invitation feature"
 ```
 
 系统执行：
@@ -634,7 +634,7 @@ Tasks:
   5. task.add_tests
 
 Next recommended task:
-  xz task run task.add_invitation_schema
+  xiezhi task run task.add_invitation_schema
 ```
 
 ### 8.4 执行任务
@@ -642,7 +642,7 @@ Next recommended task:
 命令：
 
 ```bash
-xz task run task.add_create_invite_api --runtime opencode
+xiezhi task run task.add_create_invite_api --runtime opencode
 ```
 
 系统执行：
@@ -663,7 +663,7 @@ xz task run task.add_create_invite_api --runtime opencode
 命令：
 
 ```bash
-xz verify <patch-id>
+xiezhi verify <patch-id>
 ```
 
 检查项：
@@ -701,7 +701,7 @@ Passed:
 命令：
 
 ```bash
-xz review <patch-id>
+xiezhi review <patch-id>
 ```
 
 输出：
@@ -771,7 +771,7 @@ v1 至少要区分以下失败类型：
 系统必须支持在已有 repo 中初始化：
 
 ```bash
-xz init
+xiezhi init
 ```
 
 要求：
@@ -1036,7 +1036,7 @@ v1 输出不能只对系统实现者友好，也必须对普通开发者可读�
 ```text
 ┌────────────────────────────────────────────┐
 │ CLI                                        │
-│ xz init / index / plan / task run / review │
+│ xiezhi init / index / plan / task run / review │
 └───────────────────┬────────────────────────┘
                     ↓
 ┌────────────────────────────────────────────┐
@@ -1617,75 +1617,75 @@ CREATE TABLE violations (
 
 ## 15. CLI Commands v1
 
-### `xz init`
+### `xiezhi init`
 
 初始化项目。
 
-### `xz index`
+### `xiezhi index`
 
 索引代码库。
 
 参数：
 
 ```bash
-xz index --full
-xz index --incremental
+xiezhi index --full
+xiezhi index --incremental
 ```
 
-### `xz plan`
+### `xiezhi plan`
 
 从自然语言生成 Feature DAG 和 Task DAG。
 
 ```bash
-xz plan "add GitHub OAuth login"
+xiezhi plan "add GitHub OAuth login"
 ```
 
-### `xz dag show`
+### `xiezhi dag show`
 
 展示 Feature DAG。
 
 ```bash
-xz dag show <feature-id>
+xiezhi dag show <feature-id>
 ```
 
-### `xz task list`
+### `xiezhi task list`
 
 展示 task 列表。
 
 ```bash
-xz task list <feature-id>
+xiezhi task list <feature-id>
 ```
 
-### `xz task run`
+### `xiezhi task run`
 
 执行单个 task。
 
 ```bash
-xz task run task.add_callback_route --runtime opencode
+xiezhi task run task.add_callback_route --runtime opencode
 ```
 
-### `xz verify`
+### `xiezhi verify`
 
 验证 patch。
 
 ```bash
-xz verify <patch-id>
+xiezhi verify <patch-id>
 ```
 
-### `xz review`
+### `xiezhi review`
 
 生成 review report。
 
 ```bash
-xz review <patch-id>
+xiezhi review <patch-id>
 ```
 
-### `xz patch discard`
+### `xiezhi patch discard`
 
 丢弃 patch。
 
 ```bash
-xz patch discard <patch-id>
+xiezhi patch discard <patch-id>
 ```
 
 ---
@@ -1825,7 +1825,7 @@ Review clarity:
 
 1. 在 3 个不同的 TypeScript repo 上完成端到端 demo。
 2. 至少 1 个 demo 展示 accepted patch，至少 1 个 demo 展示 rejected patch。
-3. `xz init`、`xz index`、`xz plan`、`xz task run`、`xz verify`、`xz review` 六个主命令可连续运行。
+3. `xiezhi init`、`xiezhi index`、`xiezhi plan`、`xiezhi task run`、`xiezhi verify`、`xiezhi review` 六个主命令可连续运行。
 4. verifier 的 blocking violation 与 warning 结果具有稳定命名，不依赖人工临时解释。
 5. 发生失败时，用户可以看到下一步建议，而不是只能查看原始日志。
 
@@ -1860,8 +1860,8 @@ Patch rollback:
 交付：
 
 ```bash
-xz init
-xz index
+xiezhi init
+xiezhi index
 ```
 
 ### Milestone 2：Feature DAG + Task DAG
@@ -1875,9 +1875,9 @@ xz index
 交付：
 
 ```bash
-xz plan "add team invitation feature"
-xz dag show
-xz task list
+xiezhi plan "add team invitation feature"
+xiezhi dag show
+xiezhi task list
 ```
 
 ### Milestone 3：OpenCode Adapter
@@ -1892,7 +1892,7 @@ xz task list
 交付：
 
 ```bash
-xz task run <task-id> --runtime opencode
+xiezhi task run <task-id> --runtime opencode
 ```
 
 ### Milestone 4：Semantic Diff
@@ -1906,7 +1906,7 @@ xz task run <task-id> --runtime opencode
 交付：
 
 ```bash
-xz review <patch-id>
+xiezhi review <patch-id>
 ```
 
 ### Milestone 5：Verifier
@@ -1922,7 +1922,7 @@ xz review <patch-id>
 交付：
 
 ```bash
-xz verify <patch-id>
+xiezhi verify <patch-id>
 ```
 
 ### Milestone 6：End-to-end Demo
@@ -2027,14 +2027,14 @@ xz verify <patch-id>
 ### Step 1：初始化
 
 ```bash
-xz init
-xz index
+xiezhi init
+xiezhi index
 ```
 
 ### Step 2：生成计划
 
 ```bash
-xz plan "add team invitation feature with 24 hour expiry token"
+xiezhi plan "add team invitation feature with 24 hour expiry token"
 ```
 
 输出：
@@ -2048,7 +2048,7 @@ Next task: task.add_invitation_schema
 ### Step 3：执行任务
 
 ```bash
-xz task run task.add_invitation_schema --runtime opencode
+xiezhi task run task.add_invitation_schema --runtime opencode
 ```
 
 输出：
@@ -2063,7 +2063,7 @@ Verifier passed.
 ### Step 4：执行第二个任务
 
 ```bash
-xz task run task.add_create_invite_api --runtime opencode
+xiezhi task run task.add_create_invite_api --runtime opencode
 ```
 
 输出：
@@ -2128,6 +2128,6 @@ v1 成功的标志是：
 
 下一步如果继续推进实现，最合理的工程顺序是：
 
-1. 先完成 `xz init`、`xz index` 和本地 SQLite schema。
+1. 先完成 `xiezhi init`、`xiezhi index` 和本地 SQLite schema。
 2. 再完成最小可用的 `plan -> task run -> verify -> review` 主链路。
 3. 最后补 semantic diff 丰富度、warning 质量和更好的 CLI 体验。

@@ -9,7 +9,7 @@ Status: `done`
 - Goal: help a new user bootstrap or recover without repo spelunking
 - Acceptance:
   - common setup and metadata errors surface clear recovery steps
-  - `xz doctor` exists and covers node, git, config, DB, and runtime checks
+  - `xiezhi doctor` exists and covers node, git, config, DB, and runtime checks
 
 ## T081 Install and packaging path
 
@@ -36,7 +36,7 @@ Status: `done`
 - Goal: let users share verification and review results outside the terminal
 - Acceptance:
   - one export format exists for the review summary
-  - `xz review --format json|markdown --output <path>` writes a shareable artifact
+  - `xiezhi review --format json|markdown --output <path>` writes a shareable artifact
 
 ## T084 Config profiles and presets
 
@@ -45,7 +45,7 @@ Status: `done`
 - Goal: reduce setup friction for common runtime and repo styles
 - Acceptance:
   - at least two example presets exist and are documented
-  - `xz init --preset local-fast|ci-guarded` is supported
+  - `xiezhi init --preset local-fast|ci-guarded` is supported
 
 ## T085 Operator release notes
 

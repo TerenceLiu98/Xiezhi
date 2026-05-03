@@ -33,6 +33,8 @@ init
 | 6 | Alpha | multi-runtime hardening and demo preparation | alpha release criteria are satisfied |
 | 7 | Runtime Integration | replace scaffold adapters with real runtime execution | at least one runtime produces real controlled edits |
 | 8 | Release Workflow | external alpha onboarding, reports, and CI guardrails | a new team can install, demo, and validate XieZhi repeatably |
+| 9 | Control Loop Hardening | close PRD gaps in patch lifecycle, verifier strictness, and review clarity | operators can accept, reject, and reason about patches with stronger evidence |
+| 10 | Semantic Control and Planning | upgrade planning and policy from file scope toward semantic scope | tasks carry semantic intent and verifier can detect semantic scope drift |
 
 ## Suggested Build Order
 
@@ -40,6 +42,8 @@ init
 2. Land a thin OpenCode path first in Phase 4.
 3. Only after one runtime works, add Claude and Codex adapters.
 4. Keep semantic diff and verifier minimal-but-real before polishing HTML or dashboard output.
+5. After alpha and release workflow, close the remaining PRD gaps in lifecycle and verification before broadening planner ambition.
+6. Only after the control loop is hardened, invest in semantic policy and richer planner output.
 
 ## Files
 
@@ -52,3 +56,5 @@ init
 - [phase-6-alpha.md](/Users/terenceliu/Downloads/development/xiezhi/docs/phases/phase-6-alpha.md:1)
 - [phase-7-runtime-integration.md](/Users/terenceliu/Downloads/development/xiezhi/docs/phases/phase-7-runtime-integration.md:1)
 - [phase-8-release-workflow.md](/Users/terenceliu/Downloads/development/xiezhi/docs/phases/phase-8-release-workflow.md:1)
+- [phase-9-control-loop-hardening.md](/Users/terenceliu/Downloads/development/xiezhi/docs/phases/phase-9-control-loop-hardening.md:1)
+- [phase-10-semantic-control-and-planning.md](/Users/terenceliu/Downloads/development/xiezhi/docs/phases/phase-10-semantic-control-and-planning.md:1)

@@ -62,7 +62,7 @@ function checkNodeVersion() {
     title: "Node.js",
     status: "failed",
     summary: `Node ${process.versions.node} is below the supported runtime floor.`,
-    nextStep: "Install Node.js 22 or newer, then rerun `xz doctor`."
+    nextStep: "Install Node.js 22 or newer, then rerun `xiezhi doctor`."
   })
 }
 
@@ -81,7 +81,7 @@ async function checkGitRepo(cwd: string) {
       title: "Git repository",
       status: "failed",
       summary: "This directory is not a usable git repository for XieZhi.",
-      nextStep: "Run `xz` inside a git repository or initialize one with `git init` first."
+      nextStep: "Run `xiezhi` inside a git repository or initialize one with `git init` first."
     })
   }
 }
@@ -94,7 +94,7 @@ async function checkConfig(cwd: string) {
       title: "Project config",
       status: "warning",
       summary: "No `.xiezhi/config.yaml` file was found.",
-      nextStep: "Run `xz init` to create the project metadata directory and default config."
+      nextStep: "Run `xiezhi init` to create the project metadata directory and default config."
     })
   }
 
@@ -113,7 +113,7 @@ async function checkConfig(cwd: string) {
       title: "Project config",
       status: "failed",
       summary: resolvedError.message,
-      nextStep: resolvedError.hint ?? "Fix `.xiezhi/config.yaml` or regenerate it with `xz init`."
+      nextStep: resolvedError.hint ?? "Fix `.xiezhi/config.yaml` or regenerate it with `xiezhi init`."
     })
   }
 }
@@ -126,7 +126,7 @@ function checkDatabase(cwd: string) {
       title: "Local database",
       status: "warning",
       summary: "No `.xiezhi/xiezhi.db` file was found.",
-      nextStep: "Run `xz init` so XieZhi can create and migrate the local database."
+      nextStep: "Run `xiezhi init` so XieZhi can create and migrate the local database."
     })
   }
 
@@ -146,7 +146,7 @@ function checkDatabase(cwd: string) {
       title: "Local database",
       status: "failed",
       summary: resolvedError.message,
-      nextStep: resolvedError.hint ?? "Re-run `xz init` to repair the local metadata database."
+      nextStep: resolvedError.hint ?? "Re-run `xiezhi init` to repair the local metadata database."
     })
   } finally {
     sqlite.close()
@@ -180,7 +180,7 @@ async function checkRuntimeAvailability(defaultRuntime?: string) {
       summary: `Detected runtimes: ${availableRuntimes.map((runtime) => runtime.runtime).join(", ")}.`,
       nextStep: defaultRuntime
         ? `Update \`.xiezhi/config.yaml\` to use one of the available runtimes or install ${defaultRuntime}.`
-        : "Run `xz init --preset local-fast` or edit `.xiezhi/config.yaml` to pick an available runtime."
+        : "Run `xiezhi init --preset local-fast` or edit `.xiezhi/config.yaml` to pick an available runtime."
     })
   }
 
@@ -189,7 +189,7 @@ async function checkRuntimeAvailability(defaultRuntime?: string) {
     title: "Runtime availability",
     status: "warning",
     summary: "No supported runtime CLI was detected on PATH.",
-    nextStep: "Install `claude`, `codex`, or `opencode`, then rerun `xz doctor`."
+    nextStep: "Install `claude`, `codex`, or `opencode`, then rerun `xiezhi doctor`."
   })
 }
 

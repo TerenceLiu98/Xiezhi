@@ -14,9 +14,9 @@ Turn natural language intent into a structured execution plan with explicit scop
 
 ## Deliverables
 
-- `xz plan "<request>"` generates a feature and task structure
+- `xiezhi plan "<request>"` generates a feature and task structure
 - Tasks include status, dependencies, acceptance, and initial scope
-- `xz dag show` and `xz task list` render persisted planning results
+- `xiezhi dag show` and `xiezhi task list` render persisted planning results
 
 ## Acceptance Criteria
 
@@ -36,5 +36,5 @@ Turn natural language intent into a structured execution plan with explicit scop
 - `T033` scope inference from code index
 - `T034` Intent IR schema and generator
 - `T035` DAG persistence layer
-- `T036` `xz dag show` renderer
-- `T037` `xz task list` renderer
+- `T036` `xiezhi dag show` renderer
+- `T037` `xiezhi task list` renderer

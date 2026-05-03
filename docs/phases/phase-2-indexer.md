@@ -15,8 +15,8 @@ Make the codebase queryable so planning, scope generation, semantic diff, and ve
 
 ## Deliverables
 
-- `xz index --full` works on a real TypeScript repo
-- `xz index --incremental` updates changed files
+- `xiezhi index --full` works on a real TypeScript repo
+- `xiezhi index --incremental` updates changed files
 - Code nodes and edges are stored in SQLite
 - CLI prints a human-readable index summary
 

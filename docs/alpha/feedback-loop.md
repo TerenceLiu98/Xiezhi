@@ -14,7 +14,7 @@ Use this document to turn alpha feedback into backlog-ready product input.
 
 - What the user was trying to do
 - Where they got stuck
-- Whether `xz doctor` helped
+- Whether `xiezhi doctor` helped
 - Whether `verify` and `review` felt trustworthy
 - What they expected to happen instead
 

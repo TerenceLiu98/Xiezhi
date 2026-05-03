@@ -1,5 +1,10 @@
 # XieZhi
 
+[![License: AGPL v3+](https://img.shields.io/badge/license-AGPL%20v3%2B-0f766e.svg)](/Users/terenceliu/Downloads/development/xiezhi/LICENSE)
+![Status](https://img.shields.io/badge/status-alpha-b45309)
+![Node](https://img.shields.io/badge/node-%3E%3D22-3c873a)
+![TypeScript](https://img.shields.io/badge/built%20with-TypeScript-3178c6)
+
 XieZhi is a controlled vibe coding platform for AI-assisted software development.
 
 Instead of letting an agent directly edit a codebase and hoping the diff looks reasonable, XieZhi adds a control layer on top of an agent runtime such as OpenCode. It turns natural language requests into structured tasks, constrains what the agent is allowed to change, and verifies whether the resulting patch actually matches the task.
@@ -20,6 +25,8 @@ XieZhi is built to make AI-generated changes more:
 - Constrained
 - Traceable
 - Verifiable
+
+For more background on the motivation behind controlled vibe coding, see [🤓 Humans do Marginalia, AIs doe Zettelkasten - 构建科研民工的第二大脑 (2)](https://blog.cklau.cc/post/sapientia-development-2/).
 
 ## Core Idea
 
@@ -67,14 +74,15 @@ The first version is intentionally CLI-first and local-first.
 ## Example Workflow
 
 ```bash
-xz init
-xz index
-xz plan "add team invitation feature"
-xz dag show
-xz task list
-xz task run task.add_create_invite_api --runtime opencode
-xz verify <patch-id>
-xz review <patch-id>
+xiezhi init
+xiezhi index
+xiezhi plan "add team invitation feature"
+xiezhi dag show
+xiezhi task list
+xiezhi task run task.add_create_invite_api --runtime opencode
+xiezhi verify <patch-id>
+xiezhi review <patch-id>
+xiezhi patch accept <patch-id>
 ```
 
 Example review output:
@@ -90,6 +98,71 @@ Warnings:
   - public type changed: TeamRole
   - missing test: invitation expiry
 ```
+
+## Demo: Budgeting App
+
+Imagine a user is building a personal finance app and wants to add a monthly budget alert:
+
+> Add a feature so users get a warning when spending in a category exceeds the monthly budget.
+
+With a normal coding agent, that request might lead to broad edits across transactions, notifications, and unrelated settings screens.
+
+With XieZhi, the flow is narrower and easier to review:
+
+```bash
+xiezhi init
+xiezhi index
+xiezhi plan "add monthly category budget alerts to the budgeting app"
+xiezhi dag show
+xiezhi task list
+```
+
+At this point, XieZhi can turn the request into a small task graph such as:
+
+```text
+Feature: Monthly category budget alerts
+
+Tasks:
+  1. Confirm touchpoints for budget alerts
+  2. Implement budget alert calculation
+  3. Verify budget alert coverage
+```
+
+Then the user runs one task in isolation:
+
+```bash
+xiezhi task run <task-id> --runtime opencode
+```
+
+XieZhi creates a dedicated git worktree for that task, injects the task goal and allowed file scope, and captures the resulting patch.
+
+After the runtime finishes, the user verifies the patch:
+
+```bash
+xiezhi verify <patch-id>
+xiezhi review <patch-id>
+```
+
+Example review output for the budgeting app might look like:
+
+```text
+Semantic Diff:
+  Added:
+    - function calculateBudgetAlert
+    - route GET /budgets/:categoryId/alerts
+    - test budget alert triggers after monthly limit is crossed
+
+Warnings:
+  - public type changed: BudgetAlert
+```
+
+If the patch looks good, the user can explicitly accept it:
+
+```bash
+xiezhi patch accept <patch-id>
+```
+
+If the runtime edits something out of scope, like `src/auth/session.ts` or `src/settings/currency.ts`, XieZhi can reject the patch and tell the user to retry or discard it instead of silently letting unrelated changes through.
 
 ## Design Principles
 
@@ -130,7 +203,7 @@ The alpha smoke path covers:
 pnpm install
 pnpm build
 pnpm link --global
-xz doctor
+xiezhi doctor
 ```
 
 More detailed install and preset guidance lives in [docs/install.md](/Users/terenceliu/Downloads/development/xiezhi/docs/install.md:1).
@@ -144,3 +217,9 @@ The immediate goal is to prove a tight v1 loop:
 3. Execute one task in an isolated worktree.
 4. Produce a semantic diff and verification report.
 5. Accept a good patch or reject an out-of-scope one.
+
+## License
+
+XieZhi is licensed under the GNU Affero General Public License v3.0 or later.
+
+See [LICENSE](/Users/terenceliu/Downloads/development/xiezhi/LICENSE:1).

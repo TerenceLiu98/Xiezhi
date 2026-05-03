@@ -1,6 +1,6 @@
 import type { RuntimeName } from "../runtime/shared/index.js"
 import { getPlanView } from "../services/planning-service.js"
-import { discardPatch, retryPatch, runTask } from "../services/task-run-service.js"
+import { acceptPatch, discardPatch, retryPatch, runTask } from "../services/task-run-service.js"
 
 export async function runTaskListCommand(cwd: string, featureId?: string) {
   const view = getPlanView(cwd, featureId)
@@ -23,4 +23,8 @@ export async function runTaskDiscardCommand(cwd: string, patchId: string) {
 
 export async function runTaskRetryCommand(cwd: string, patchId: string, runtime?: RuntimeName) {
   return retryPatch(cwd, patchId, runtime)
+}
+
+export async function runPatchAcceptCommand(cwd: string, patchId: string) {
+  return acceptPatch(cwd, patchId)
 }

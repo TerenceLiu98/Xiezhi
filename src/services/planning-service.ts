@@ -9,7 +9,7 @@ import { createId, stableId } from "../core/ids.js"
 import { nowIso } from "../core/time.js"
 import { assertDatabaseInitialized, openDatabaseConnection, type XieZhiDatabase } from "../db/client.js"
 import * as schema from "../db/schema.js"
-import { codeEdgesTable, codeNodesTable, dagEdgesTable, dagNodesTable, featuresTable, tasksTable } from "../db/schema.js"
+import { codeEdgesTable, codeNodesTable, dagEdgesTable, dagNodesTable, featuresTable, patchesTable, tasksTable } from "../db/schema.js"
 import type { ExecutionPolicy } from "../runtime/shared/contracts.js"
 import {
   type FeatureStatus,
@@ -105,7 +105,7 @@ function normalizeRequest(request: string) {
 
   if (!normalized) {
     throw new XieZhiError("CLI_USAGE_ERROR", "Plan request cannot be empty.", {
-      hint: "Pass a short natural language request such as `xz plan \"add team invitation\"`."
+      hint: "Pass a short natural language request such as `xiezhi plan \"add team invitation\"`."
     })
   }
 
@@ -270,7 +270,7 @@ export class PlanningService {
 
     if (nodes.length === 0) {
       throw new XieZhiError("CLI_USAGE_ERROR", "No code index found for this repository.", {
-        hint: "Run `xz index --full` before planning so XieZhi can infer scope."
+        hint: "Run `xiezhi index --full` before planning so XieZhi can infer scope."
       })
     }
 
@@ -714,7 +714,7 @@ export class PlanningService {
 
     if (!feature) {
       throw new XieZhiError("CLI_USAGE_ERROR", "No planned feature found.", {
-        hint: "Run `xz plan \"...\"` first, then inspect it with `xz dag show` or `xz task list`."
+        hint: "Run `xiezhi plan \"...\"` first, then inspect it with `xiezhi dag show` or `xiezhi task list`."
       })
     }
 
@@ -737,7 +737,18 @@ export class PlanningService {
       .all()
       .map((edge) => plannedDagEdgeSchema.parse(edge))
     const taskRows = this.db.select().from(tasksTable).where(eq(tasksTable.featureId, feature.id)).all()
+    const taskIds = taskRows.map((taskRow) => taskRow.id)
+    const patchRows = taskIds.length === 0
+      ? []
+      : this.db.select().from(patchesTable).all().filter((patch) => taskIds.includes(patch.taskId))
     const nodeMap = new Map(nodes.map((node) => [node.id, node]))
+    const patchesByTaskId = new Map<string, typeof patchRows>()
+
+    for (const patch of patchRows) {
+      const values = patchesByTaskId.get(patch.taskId) ?? []
+      values.push(patch)
+      patchesByTaskId.set(patch.taskId, values)
+    }
 
     const tasks = taskRows
       .map((taskRow) => {
@@ -751,6 +762,10 @@ export class PlanningService {
           })
         )
         const intent = safeJsonParse<IntentIr | null>(taskRow.intentIrJson, null)
+        const linkedPatches = (patchesByTaskId.get(taskRow.id) ?? []).sort((left, right) => {
+          return right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id)
+        })
+        const latestPatch = linkedPatches[0] ?? null
 
         return {
           id: taskRow.id,
@@ -764,6 +779,15 @@ export class PlanningService {
           acceptance: intent?.acceptance ?? metadata.acceptance,
           recommendedCommands: intent?.recommendedCommands ?? [],
           scopeSummary: metadata.scopeSummary,
+          patchCount: linkedPatches.length,
+          latestPatch: latestPatch
+            ? {
+                id: latestPatch.id,
+                status: latestPatch.status,
+                runtimeName: latestPatch.runtimeName,
+                updatedAt: latestPatch.updatedAt
+              }
+            : null,
           order: metadata.order
         }
       })
