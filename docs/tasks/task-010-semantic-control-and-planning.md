@@ -92,3 +92,18 @@ Status: `todo`
 - Acceptance:
   - review output can show which acceptance criteria appear covered and which do not
   - low-confidence goal match is surfaced consistently as an operator signal
+
+## T125 MVP semantic scope verifier
+
+- Priority: `P0`
+- Phase: `10`
+- Goal: deliver the minimum semantic verifier needed for PRD v2: detect symbol-level scope drift inside otherwise allowed files
+- Deliverables:
+  - allowed symbol scope in task intent or policy
+  - modified symbol reporting in semantic diff
+  - semantic out-of-scope violation type
+  - review language that names the symbol and task boundary
+- Acceptance:
+  - a patch can be warned or rejected for modifying a symbol outside the task contract
+  - the verifier distinguishes file-scope violations from symbol-scope violations
+  - supervisor decisions can consume semantic scope evidence

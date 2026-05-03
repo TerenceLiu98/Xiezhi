@@ -98,3 +98,31 @@ Status: `todo`
 - Acceptance:
   - an operator can see which patches belong to a task and what happened to them
   - `xiezhi task list` or related views expose the latest actionable patch state
+
+## T117 Task lifecycle clarity
+
+- Priority: `P0`
+- Phase: `9`
+- Goal: remove ambiguity between active runtime execution and captured patches that are awaiting verification
+- Deliverables:
+  - task status model that distinguishes `running`, `patched`, `verified`, `rejected`, and `failed`
+  - CLI output updates for task list, task run, verify, and review
+  - compatibility handling for existing `running` task rows
+- Acceptance:
+  - `running` means a task is actively executing
+  - a captured but unverified patch appears as `patched` or equivalent
+  - operators no longer need to infer lifecycle state from patch status alone
+
+## T118 Runtime launch evidence
+
+- Priority: `P0`
+- Phase: `9`
+- Goal: make it obvious whether a task used a real runtime or scaffold fallback and whether the runtime produced edits
+- Deliverables:
+  - runtime mode in latest patch summaries
+  - latest command and runtime binary in task or patch views
+  - explicit empty-patch messaging when real runtime execution succeeds without edits
+- Acceptance:
+  - `xiezhi task run` reports real or scaffold execution clearly
+  - `xiezhi task list` exposes latest patch runtime mode
+  - empty patches are described as launched-but-no-edits rather than ambiguous success

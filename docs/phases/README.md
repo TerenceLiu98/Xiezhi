@@ -1,8 +1,8 @@
 # XieZhi Phases
 
-This directory defines the implementation phases for `v1`.
+This directory defines the implementation phases for XieZhi.
 
-The goal is not to create a heavyweight project plan. The goal is to create a build order that preserves the `v1` product loop:
+The goal is not to create a heavyweight project plan. The goal is to create a build order that preserves the first control loop while moving toward the `v2` product thesis:
 
 ```text
 init
@@ -11,6 +11,16 @@ init
   -> task run
   -> verify
   -> review
+```
+
+The `v2` direction adds a supervisor layer on top:
+
+```text
+user request
+  -> main agent creates DAG and scopes
+  -> subagent executes bounded task
+  -> AST verifies impact
+  -> main agent accepts, retries, splits, or escalates
 ```
 
 ## Principles
@@ -36,6 +46,9 @@ init
 | 9 | Control Loop Hardening | close PRD gaps in patch lifecycle, verifier strictness, and review clarity | operators can accept, reject, and reason about patches with stronger evidence |
 | 10 | Semantic Control and Planning | upgrade planning and policy from file scope toward semantic scope | tasks carry semantic intent and verifier can detect semantic scope drift |
 | 11 | Supervisor and Subagent Orchestration | move from one-shot task execution toward a supervised multi-agent loop | the main agent can decompose goals, assign subagents, and advance the DAG with evidence |
+| 12 | Agent Observability and Context | make agent work inspectable and give subagents high-quality context packs | operators can inspect task intent, agent runs, runtime mode, and context |
+| 13 | Recovery and Integration | let the supervisor retry, split, reassign, and integrate patches | failed work can recover through structured supervisor decisions |
+| 14 | Product and Governance Layer | translate the orchestrator into product-facing and team-facing surfaces | users can understand roadmap, risk, history, and policy without reading raw DAGs |
 
 ## Suggested Build Order
 
@@ -46,6 +59,7 @@ init
 5. After alpha and release workflow, close the remaining PRD gaps in lifecycle and verification before broadening planner ambition.
 6. Only after the control loop is hardened, invest in semantic policy and richer planner output.
 7. Only after semantic scope and richer DAG structure exist should XieZhi grow into a supervisor that coordinates subagents.
+8. Add observability and recovery before product-layer UI, because users need to trust the orchestration before it becomes more autonomous.
 
 ## Files
 
@@ -61,3 +75,6 @@ init
 - [phase-9-control-loop-hardening.md](/Users/terenceliu/Downloads/development/xiezhi/docs/phases/phase-9-control-loop-hardening.md:1)
 - [phase-10-semantic-control-and-planning.md](/Users/terenceliu/Downloads/development/xiezhi/docs/phases/phase-10-semantic-control-and-planning.md:1)
 - [phase-11-supervisor-subagent-orchestration.md](/Users/terenceliu/Downloads/development/xiezhi/docs/phases/phase-11-supervisor-subagent-orchestration.md:1)
+- [phase-12-agent-observability-and-context.md](/Users/terenceliu/Downloads/development/xiezhi/docs/phases/phase-12-agent-observability-and-context.md:1)
+- [phase-13-recovery-and-integration.md](/Users/terenceliu/Downloads/development/xiezhi/docs/phases/phase-13-recovery-and-integration.md:1)
+- [phase-14-product-governance-layer.md](/Users/terenceliu/Downloads/development/xiezhi/docs/phases/phase-14-product-governance-layer.md:1)

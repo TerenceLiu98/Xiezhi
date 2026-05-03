@@ -14,6 +14,7 @@ Move XieZhi from alpha-grade file-scoped control toward the fuller PRD shape: ri
 - semantic scope verification
 - planner-backed DAG generation beyond fixed templates
 - acceptance-to-test traceability and goal-match heuristics
+- MVP-grade symbol scope enforcement for delegated subagent work
 
 ## Deliverables
 
@@ -22,6 +23,7 @@ Move XieZhi from alpha-grade file-scoped control toward the fuller PRD shape: ri
 - verifier support for symbol or code-node scope violations
 - planner output that can emit richer task structures and dependency shapes
 - traceability views that connect requirement, task, patch, and verification evidence
+- semantic scope verifier focused on file-allowed but symbol-out-of-scope edits
 
 ## Acceptance Criteria
 
@@ -29,6 +31,7 @@ Move XieZhi from alpha-grade file-scoped control toward the fuller PRD shape: ri
 - verifier can flag a semantic out-of-scope change even when the file itself is allowed
 - planner can generate more than the current fixed review, implement, and verify task trio
 - operators can inspect how acceptance criteria map to tests and patch evidence
+- patches can be rejected or warned when they modify symbols outside the task contract
 
 ## Dependencies
 
@@ -44,3 +47,4 @@ Move XieZhi from alpha-grade file-scoped control toward the fuller PRD shape: ri
 - `T104` richer DAG model and status transitions
 - `T105` risk and dependency heuristics
 - `T106` acceptance traceability and goal-match scoring
+- `T125` MVP semantic scope verifier

@@ -54,37 +54,12 @@ Status: `todo`
   - the supervisor can choose a ready task without manual task id selection
   - dependencies prevent out-of-order assignment
 
-## T114 Agent and task observability surfaces
-
-- Priority: `P1`
-- Phase: `11`
-- Goal: expose enough visibility for humans to understand which agent is doing what, whether it is progressing, and what patch it proposed
-- Deliverables:
-  - `xiezhi agent list`
-  - `xiezhi agent show <agent-id>`
-  - `xiezhi task show <task-id>` or equivalent deep task view
-- Acceptance:
-  - operators can identify the active agent for a task
-  - operators can inspect runtime mode, latest patch id, and recent event summaries
-
-## T115 Supervisor decision engine and recovery loop
-
-- Priority: `P1`
-- Phase: `11`
-- Goal: let the supervisor decide whether to accept, retry, split, reassign, or escalate after a subagent returns
-- Deliverables:
-  - structured supervisor decision model
-  - retry or reassign policy
-  - escalation summary surface
-- Acceptance:
-  - the supervisor can take at least accept, retry, and escalate actions based on returned evidence
-  - operator-visible reasons exist for each decision
-
 ## T116 Semantic guardrails in delegated execution
 
 - Priority: `P1`
 - Phase: `11`
 - Goal: ensure delegated execution still respects AST-based scope and semantic policy, rather than regressing into free-form multi-agent coding
+- Depends on: `T102`, `T112`, `T125`
 - Deliverables:
   - semantic policy included in subagent assignments
   - verifier integration for delegated patches
@@ -92,3 +67,58 @@ Status: `todo`
 - Acceptance:
   - subagent patches can be rejected for semantic scope drift even when a file is allowed
   - supervisor decisions use semantic evidence, not only runtime success or failure
+
+## T120 Supervisor run skeleton
+
+- Priority: `P0`
+- Phase: `11`
+- Goal: create the first usable `xiezhi supervisor run "<goal>"` path that generates or selects a DAG and assigns one ready task
+- Deliverables:
+  - CLI command skeleton
+  - supervisor session creation
+  - reuse of bootstrap or plan output as the initial DAG source
+  - first ready-task selection
+- Acceptance:
+  - a broad goal can create a supervisor run record
+  - the supervisor can identify the next executable task without a manual task id
+  - the command returns clear next steps even before full autonomy exists
+
+## T121 Agent run persistence MVP
+
+- Priority: `P0`
+- Phase: `11`
+- Goal: make subagents first-class persisted execution records instead of only runtime command logs
+- Deliverables:
+  - `agent_runs` table or equivalent persisted model
+  - runtime name, mode, task id, patch id, status, and timestamps
+  - minimal agent event persistence
+- Acceptance:
+  - every delegated task run can be traced to an agent run
+  - task and patch records can link back to the responsible subagent run
+
+## T122 Assignment contract MVP
+
+- Priority: `P0`
+- Phase: `11`
+- Goal: convert a ready task into a bounded subagent assignment that contains everything the worker needs to execute safely
+- Deliverables:
+  - assignment shape with goal, context, allowed files, forbidden files, acceptance, checks, and expected outputs
+  - adapter mapping from assignment to existing runtime inputs
+  - persisted assignment summary
+- Acceptance:
+  - subagents receive structured task contracts rather than only broad prompts
+  - runtime adapters can execute an assignment without losing policy information
+
+## T126 Note-taking MVP demo
+
+- Priority: `P0`
+- Phase: `11`
+- Goal: create a repeatable PRD v2 demo using a simple React note-taking app and the request `add search and tags`
+- Deliverables:
+  - demo repo or fixture
+  - supervisor run script
+  - scoped tasks for search and tags
+  - expected review and verification output
+- Acceptance:
+  - the demo shows main agent planning, subagent execution, patch capture, AST diff, and review
+  - the output can demonstrate smaller, more traceable patches than a direct single-agent run

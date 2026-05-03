@@ -1,6 +1,6 @@
 # XieZhi Task Backlog
 
-This directory contains the implementation task backlog derived from the PRD and the finalized `v1` stack.
+This directory contains the implementation task backlog derived from the PRD and the current XieZhi roadmap.
 
 ## Task Conventions
 
@@ -17,6 +17,8 @@ This directory contains the implementation task backlog derived from the PRD and
 
 ## Suggested Reading Order
 
+Start with [../prd_v2.md](/Users/terenceliu/Downloads/development/xiezhi/docs/prd_v2.md:1) for the current agent-native orchestration thesis.
+
 1. [task-001-backlog.md](/Users/terenceliu/Downloads/development/xiezhi/docs/tasks/task-001-backlog.md:1)
 2. [task-002-core-and-cli.md](/Users/terenceliu/Downloads/development/xiezhi/docs/tasks/task-002-core-and-cli.md:1)
 3. [task-003-indexer-and-planning.md](/Users/terenceliu/Downloads/development/xiezhi/docs/tasks/task-003-indexer-and-planning.md:1)
@@ -28,8 +30,11 @@ This directory contains the implementation task backlog derived from the PRD and
 9. [task-009-control-loop-hardening.md](/Users/terenceliu/Downloads/development/xiezhi/docs/tasks/task-009-control-loop-hardening.md:1)
 10. [task-010-semantic-control-and-planning.md](/Users/terenceliu/Downloads/development/xiezhi/docs/tasks/task-010-semantic-control-and-planning.md:1)
 11. [task-011-supervisor-subagent-orchestration.md](/Users/terenceliu/Downloads/development/xiezhi/docs/tasks/task-011-supervisor-subagent-orchestration.md:1)
-12. [../install.md](/Users/terenceliu/Downloads/development/xiezhi/docs/install.md:1)
-13. [../presets/README.md](/Users/terenceliu/Downloads/development/xiezhi/docs/presets/README.md:1)
+12. [task-012-agent-observability-and-context.md](/Users/terenceliu/Downloads/development/xiezhi/docs/tasks/task-012-agent-observability-and-context.md:1)
+13. [task-013-recovery-and-integration.md](/Users/terenceliu/Downloads/development/xiezhi/docs/tasks/task-013-recovery-and-integration.md:1)
+14. [task-014-product-governance-layer.md](/Users/terenceliu/Downloads/development/xiezhi/docs/tasks/task-014-product-governance-layer.md:1)
+15. [../install.md](/Users/terenceliu/Downloads/development/xiezhi/docs/install.md:1)
+16. [../presets/README.md](/Users/terenceliu/Downloads/development/xiezhi/docs/presets/README.md:1)
 
 ## How to Use This Backlog
 

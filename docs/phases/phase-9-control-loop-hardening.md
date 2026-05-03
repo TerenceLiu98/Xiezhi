@@ -14,6 +14,8 @@ Close the highest-priority PRD gaps in patch lifecycle, verification strictness,
 - richer semantic diff coverage
 - stronger verify and review evidence
 - structured failure attribution in CLI output
+- clearer task lifecycle states for patched, verified, rejected, and failed work
+- runtime launch evidence that distinguishes real subagent execution from scaffold fallback
 
 ## Deliverables
 
@@ -22,6 +24,7 @@ Close the highest-priority PRD gaps in patch lifecycle, verification strictness,
 - semantic diff support for modified nodes plus import, export, and test deltas
 - clearer verify and review summaries with textual diff context
 - unified failure summary rendering with stage, type, and next action
+- task and patch views that show runtime mode, latest command, and empty-patch outcomes
 
 ## Acceptance Criteria
 
@@ -29,6 +32,8 @@ Close the highest-priority PRD gaps in patch lifecycle, verification strictness,
 - verifier can reject patches with base-commit drift or missing required checks
 - review output is strong enough for an operator to decide in a couple of minutes
 - CLI failure output is structured and recovery-oriented instead of ad hoc
+- `running` is reserved for active execution and does not describe already-captured patches
+- an operator can tell whether the latest patch came from a real runtime or scaffold fallback
 
 ## Dependencies
 
@@ -45,3 +50,5 @@ Close the highest-priority PRD gaps in patch lifecycle, verification strictness,
 - `T094` review and verify evidence upgrade
 - `T095` structured failure summaries in CLI
 - `T096` patch history and task linkage views
+- `T117` task lifecycle clarity
+- `T118` runtime launch evidence

@@ -13,7 +13,7 @@ Evolve XieZhi from a controlled task runner into a DAG- and AST-governed supervi
 - DAG-to-assignment orchestration
 - live operator visibility into agent progress and decisions
 - integration of semantic task policy into subagent execution
-- retry, reassign, split, and escalate decisions at the supervisor layer
+- first vertical-slice demo of main agent to one subagent to verified patch
 
 ## Deliverables
 
@@ -21,7 +21,7 @@ Evolve XieZhi from a controlled task runner into a DAG- and AST-governed supervi
 - persisted subagent run records and event streams
 - assignment compiler that converts ready tasks into subagent contracts
 - operator views for current agent, task, patch, and latest decision state
-- supervisor decision loop that can accept, retry, or escalate task outcomes
+- note-taking MVP demo path for `add search and tags`
 
 ## Acceptance Criteria
 
@@ -30,6 +30,7 @@ Evolve XieZhi from a controlled task runner into a DAG- and AST-governed supervi
 - subagents execute only bounded tasks and return structured artifacts
 - operators can tell which agent is active, what task it owns, and whether its runtime is real or scaffolded
 - the supervisor can advance a task from ready to assigned to patched to verified based on returned evidence
+- the first supervisor slice can assign one ready task without manual task id selection
 
 ## Dependencies
 
@@ -42,6 +43,8 @@ Evolve XieZhi from a controlled task runner into a DAG- and AST-governed supervi
 - `T111` subagent run persistence and event stream
 - `T112` subagent runtime contract and assignment adapter
 - `T113` DAG-to-assignment compiler
-- `T114` agent and task observability surfaces
-- `T115` supervisor decision engine and recovery loop
 - `T116` semantic guardrails in delegated execution
+- `T120` supervisor run skeleton
+- `T121` agent run persistence MVP
+- `T122` assignment contract MVP
+- `T126` note-taking MVP demo
