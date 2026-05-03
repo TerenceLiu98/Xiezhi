@@ -236,3 +236,72 @@ export async function createTempNoteTakingRepo(prefix: string) {
 
   return cwd
 }
+
+export async function createTempPythonRepo(prefix: string) {
+  const cwd = await createTempGitRepo(prefix)
+
+  await mkdir(path.join(cwd, "src"), { recursive: true })
+  await mkdir(path.join(cwd, "tests"), { recursive: true })
+  await writeFile(
+    path.join(cwd, "src", "math_utils.py"),
+    [
+      "class Calculator:",
+      "    def multiply(self, left, right):",
+      "        return left * right",
+      "",
+      "def add(left, right):",
+      "    return left + right",
+      "",
+      "def subtract(left, right):",
+      "    return left - right"
+    ].join("\n"),
+    "utf8"
+  )
+  await writeFile(
+    path.join(cwd, "tests", "test_math_utils.py"),
+    [
+      "from src.math_utils import add",
+      "",
+      "def test_add():",
+      "    assert add(1, 2) == 3"
+    ].join("\n"),
+    "utf8"
+  )
+  await execa("git", ["add", "."], { cwd })
+  await execa("git", ["commit", "-m", "add python fixture"], { cwd })
+  return cwd
+}
+
+export async function createTempJsRepo(prefix: string) {
+  const cwd = await createTempGitRepo(prefix)
+
+  await writeFile(path.join(cwd, "package.json"), JSON.stringify({ name: "js-fixture", type: "module" }, null, 2), "utf8")
+  await mkdir(path.join(cwd, "src"), { recursive: true })
+  await mkdir(path.join(cwd, "tests"), { recursive: true })
+  await writeFile(
+    path.join(cwd, "src", "app.jsx"),
+    [
+      "export function getUser(id) {",
+      "  return { id }",
+      "}",
+      "",
+      "export class Store {",
+      "  save(value) {",
+      "    return value",
+      "  }",
+      "}",
+      "",
+      "export const App = () => <main>Hello</main>",
+      "router.get('/users', getUser)"
+    ].join("\n"),
+    "utf8"
+  )
+  await writeFile(
+    path.join(cwd, "tests", "app.test.js"),
+    ["test('loads', () => {", "  getUser('1')", "})"].join("\n"),
+    "utf8"
+  )
+  await execa("git", ["add", "."], { cwd })
+  await execa("git", ["commit", "-m", "add javascript fixture"], { cwd })
+  return cwd
+}

@@ -63,7 +63,7 @@ export function createDefaultConfig(cwd: string, presetName?: ConfigPresetName):
     {
     project: {
       name: projectName,
-      language: "typescript"
+      languages: ["typescript", "javascript", "python"]
     },
     runtime: {
       default: "opencode"

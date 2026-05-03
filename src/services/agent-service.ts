@@ -1,6 +1,7 @@
 import { desc, eq } from "drizzle-orm"
 import { drizzle } from "drizzle-orm/better-sqlite3"
 import { execa } from "execa"
+import { z } from "zod"
 
 import { XieZhiError } from "../core/errors.js"
 import { createId } from "../core/ids.js"
@@ -21,6 +22,9 @@ import type { ExecutionPolicy, RuntimeName } from "../runtime/shared/contracts.j
 import { detectRuntimeAvailability } from "../runtime/shared/capabilities.js"
 import { importAgentPlan, type ImportAgentPlanResult } from "./planning-service.js"
 import { TaskRunService, type TaskRunResult } from "./task-run-service.js"
+import { getReadyQueue, scopesConflict } from "./agent-observability-service.js"
+import { reviewPatch, verifyPatch } from "./verification-service.js"
+import { promotePatch } from "./task-run-service.js"
 
 function safeJsonParse<T>(value: string | null, fallback: T): T {
   if (!value) {
@@ -33,7 +37,7 @@ function safeJsonParse<T>(value: string | null, fallback: T): T {
   }
 }
 
-function parseJsonCandidate(source: string): unknown {
+export function parseJsonCandidate(source: string): unknown {
   const trimmed = source.trim()
   if (!trimmed) {
     throw new XieZhiError("CLI_USAGE_ERROR", "Agent returned no plan output.", {
@@ -169,6 +173,78 @@ export type AgentRunCommandResult = {
   taskStatus: string
   changedFiles: string[]
   nextStep: string
+}
+
+export type AgentRunReadyResult = {
+  status: "completed"
+  featureId: string
+  selectedTaskIds: string[]
+  skipped: Array<{ taskId: string; reason: string }>
+  runs: Array<{
+    taskId: string
+    patchId: string
+    verifyStatus?: string
+    reviewStatus?: string
+    promotion: "promoted" | "held" | "blocked" | "not_auto"
+    decisionRationale: string[]
+  }>
+  nextReadyTaskIds: string[]
+}
+
+export type AgentFeedbackResult = AgentPlanCommandResult & {
+  sourceFeatureId: string | null
+  feedback: string
+}
+
+const promotionDecisionSchema = z.object({
+  version: z.literal("v1"),
+  decisions: z.array(
+    z.object({
+      patchId: z.string().min(1),
+      decision: z.enum(["promote", "hold"]),
+      rationale: z.array(z.string().min(1)).min(1)
+    })
+  )
+})
+
+function buildPromotionDecisionPrompt(input: {
+  reviews: Array<{
+    patchId: string
+    taskId: string
+    goal: string
+    changedFiles: string[]
+    warnings: Array<{ type: string; message: string }>
+    checks: Array<{ type: string; status: string; summary: string }>
+    semanticCoverage: unknown
+  }>
+}) {
+  return [
+    "You are deciding whether XieZhi may promote warning patches.",
+    "Return exactly one strict JSON object and no markdown.",
+    "The JSON must match PromotionDecision v1:",
+    '{"version":"v1","decisions":[{"patchId":"string","decision":"promote|hold","rationale":["string"]}]}',
+    "Only choose promote when the warnings are acceptable for the task acceptance and the patch should enter the main repo.",
+    "Choose hold when a human or agent should inspect or rerun the task.",
+    JSON.stringify({ reviews: input.reviews }, null, 2)
+  ].join("\n")
+}
+
+function chooseParallelReadyTasks(readyTasks: ReturnType<typeof getReadyQueue>["readyTasks"], parallel: number) {
+  const selected: typeof readyTasks = []
+  const skipped: Array<{ taskId: string; reason: string }> = []
+  for (const task of readyTasks) {
+    if (selected.length >= parallel) {
+      skipped.push({ taskId: task.id, reason: `parallel limit ${parallel} reached` })
+      continue
+    }
+    const conflict = selected.find((candidate) => scopesConflict(candidate.allowedFiles, task.allowedFiles))
+    if (conflict) {
+      skipped.push({ taskId: task.id, reason: `scope conflicts with ${conflict.id}` })
+      continue
+    }
+    selected.push(task)
+  }
+  return { selected, skipped }
 }
 
 export class AgentService {
@@ -423,6 +499,179 @@ export class AgentService {
       nextStep: taskRun.nextStep
     }
   }
+
+  async runReady(
+    cwd: string,
+    input: { featureId?: string; runtime: RuntimeName; parallel: number; auto: boolean; decisionRuntime: RuntimeName }
+  ): Promise<AgentRunReadyResult> {
+    const ready = getReadyQueue(cwd, input.featureId)
+    const { selected, skipped } = chooseParallelReadyTasks(ready.readyTasks, Math.max(1, input.parallel))
+    if (selected.length === 0) {
+      return {
+        status: "completed",
+        featureId: ready.featureId,
+        selectedTaskIds: [],
+        skipped,
+        runs: [],
+        nextReadyTaskIds: ready.readyTasks.map((task) => task.id)
+      }
+    }
+
+    const taskRuns = await Promise.all(selected.map((task) => runAgentTask(cwd, task.id, input.runtime)))
+    const runSummaries: AgentRunReadyResult["runs"] = taskRuns.map((run) => ({
+      taskId: run.taskId,
+      patchId: run.patchId,
+      promotion: input.auto ? "blocked" : "not_auto",
+      decisionRationale: input.auto ? [] : ["Auto promotion disabled."]
+    }))
+
+    if (input.auto) {
+      const warningReviews: Array<{
+        patchId: string
+        taskId: string
+        goal: string
+        changedFiles: string[]
+        warnings: Array<{ type: string; message: string }>
+        checks: Array<{ type: string; status: string; summary: string }>
+        semanticCoverage: unknown
+      }> = []
+
+      for (const summary of runSummaries) {
+        const verify = await verifyPatch(cwd, summary.patchId)
+        const review = await reviewPatch(cwd, summary.patchId)
+        summary.verifyStatus = verify.status
+        summary.reviewStatus = review.status
+        if (verify.blockingViolations.length > 0) {
+          summary.promotion = "blocked"
+          summary.decisionRationale = verify.blockingViolations.map((violation) => violation.message)
+          continue
+        }
+        if (verify.warnings.length === 0) {
+          await promotePatch(cwd, summary.patchId)
+          summary.promotion = "promoted"
+          summary.decisionRationale = ["Patch verified without warnings."]
+          continue
+        }
+        warningReviews.push({
+          patchId: summary.patchId,
+          taskId: summary.taskId,
+          goal: review.goal,
+          changedFiles: review.changedFiles,
+          warnings: review.warnings.map((warning) => ({ type: warning.type, message: warning.message })),
+          checks: review.checks.map((check) => ({ type: check.type, status: check.status, summary: check.summary })),
+          semanticCoverage: review.semanticDiff.semanticCoverage
+        })
+      }
+
+      if (warningReviews.length > 0) {
+        const commandInput = buildRuntimeCommand(
+          input.decisionRuntime,
+          cwd,
+          buildPromotionDecisionPrompt({ reviews: warningReviews })
+        )
+        const decisionResult = await execa(commandInput.command, commandInput.args, {
+          cwd: commandInput.cwd,
+          input: "input" in commandInput ? commandInput.input : undefined,
+          reject: false
+        })
+        const rawOutput = [decisionResult.stdout, decisionResult.stderr].filter(Boolean).join("\n")
+        if (decisionResult.exitCode !== 0) {
+          throw new XieZhiError("CLI_USAGE_ERROR", `Promotion decision runtime exited with code ${decisionResult.exitCode}.`, {
+            hint: rawOutput || "Retry run-ready or inspect held warning patches."
+          })
+        }
+        const parsedDecision = promotionDecisionSchema.parse(parseJsonCandidate(rawOutput))
+        const warningPatchIds = new Set(warningReviews.map((review) => review.patchId))
+        for (const decision of parsedDecision.decisions) {
+          if (!warningPatchIds.has(decision.patchId)) {
+            throw new XieZhiError("CLI_USAGE_ERROR", `PromotionDecision referenced unknown patch ${decision.patchId}.`, {
+              hint: "Ask the agent to decide only on patches from the current run-ready wave."
+            })
+          }
+        }
+        for (const review of warningReviews) {
+          const decision = parsedDecision.decisions.find((candidate) => candidate.patchId === review.patchId)
+          const summary = runSummaries.find((candidate) => candidate.patchId === review.patchId)!
+          const chosen = decision?.decision ?? "hold"
+          summary.decisionRationale = decision?.rationale ?? ["Decision omitted; holding patch."]
+          if (chosen === "promote") {
+            await promotePatch(cwd, review.patchId)
+            summary.promotion = "promoted"
+          } else {
+            summary.promotion = "held"
+          }
+
+          const agentRun = this.db.select().from(agentRunsTable).where(eq(agentRunsTable.patchId, review.patchId)).get()
+          if (agentRun) {
+            this.db
+              .insert(agentEventsTable)
+              .values({
+                id: createId(),
+                agentRunId: agentRun.id,
+                type: "promotion_decision",
+                summary: `Decision for ${review.patchId}: ${chosen}.`,
+                metadataJson: JSON.stringify({ decision: chosen, rationale: summary.decisionRationale, rawOutput }),
+                createdAt: nowIso()
+              })
+              .run()
+          }
+        }
+      }
+    }
+
+    const nextReady = getReadyQueue(cwd, ready.featureId)
+    return {
+      status: "completed",
+      featureId: ready.featureId,
+      selectedTaskIds: selected.map((task) => task.id),
+      skipped,
+      runs: runSummaries,
+      nextReadyTaskIds: nextReady.readyTasks.map((task) => task.id)
+    }
+  }
+
+  async feedback(cwd: string, feedback: string, runtime: RuntimeName, featureId?: string): Promise<AgentFeedbackResult> {
+    let sourceFeatureId = featureId ?? null
+    let context = "No previous feature context found."
+    try {
+      const ready = getReadyQueue(cwd, featureId)
+      sourceFeatureId = ready.featureId
+      context = JSON.stringify({
+        featureId: ready.featureId,
+        title: ready.featureTitle,
+        status: ready.featureStatus,
+        readyTasks: ready.readyTasks,
+        blockedTasks: ready.blockedTasks,
+        doneTasks: ready.doneTasks
+      })
+    } catch {
+      // Feedback can still start a new plan when no prior feature exists.
+    }
+
+    const result = await this.plan(
+      cwd,
+      [
+        "Create a follow-up AgentPlan from user feedback.",
+        `User feedback: ${feedback}`,
+        `Source feature id: ${sourceFeatureId ?? "none"}`,
+        `Current context: ${context}`
+      ].join("\n"),
+      runtime
+    )
+    const summary = {
+      ...(typeof result.taskKeyMap === "object" ? { taskKeyMap: result.taskKeyMap } : {}),
+      title: result.title,
+      taskCount: result.taskCount,
+      sourceFeatureId,
+      feedback
+    }
+    this.db
+      .update(agentSessionsTable)
+      .set({ planSummaryJson: JSON.stringify(summary), updatedAt: nowIso() })
+      .where(eq(agentSessionsTable.id, result.agentSessionId))
+      .run()
+    return { ...result, sourceFeatureId, feedback }
+  }
 }
 
 export async function runAgentPlan(cwd: string, goal: string, runtime: RuntimeName) {
@@ -442,6 +691,31 @@ export async function runAgentTask(cwd: string, taskId: string, runtime: Runtime
     assertDatabaseInitialized(cwd, sqlite)
     const service = new AgentService(drizzle(sqlite, { schema }))
     return await service.run(cwd, taskId, runtime)
+  } finally {
+    sqlite.close()
+  }
+}
+
+export async function runAgentReadyTasks(
+  cwd: string,
+  input: { featureId?: string; runtime: RuntimeName; parallel: number; auto: boolean; decisionRuntime: RuntimeName }
+) {
+  const sqlite = openDatabaseConnection(cwd)
+  try {
+    assertDatabaseInitialized(cwd, sqlite)
+    const service = new AgentService(drizzle(sqlite, { schema }))
+    return await service.runReady(cwd, input)
+  } finally {
+    sqlite.close()
+  }
+}
+
+export async function runAgentFeedback(cwd: string, feedback: string, runtime: RuntimeName, featureId?: string) {
+  const sqlite = openDatabaseConnection(cwd)
+  try {
+    assertDatabaseInitialized(cwd, sqlite)
+    const service = new AgentService(drizzle(sqlite, { schema }))
+    return await service.feedback(cwd, feedback, runtime, featureId)
   } finally {
     sqlite.close()
   }

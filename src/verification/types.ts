@@ -7,6 +7,11 @@ export type SemanticNodeSummary = {
 
 export type SemanticDiffSummary = {
   changedFiles: string[]
+  semanticCoverage: {
+    mode: "ast" | "partial" | "file-only"
+    analyzedFiles: string[]
+    fileOnlyFiles: string[]
+  }
   addedNodes: SemanticNodeSummary[]
   removedNodes: SemanticNodeSummary[]
   modifiedNodes: SemanticNodeSummary[]

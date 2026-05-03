@@ -10,7 +10,7 @@ import { WorktreeManager } from "../git/worktree-manager.js"
 import type { IntentIr } from "../planning/types.js"
 import { assertDatabaseInitialized, openDatabaseConnection, type XieZhiDatabase } from "../db/client.js"
 import * as schema from "../db/schema.js"
-import { dagNodesTable, patchesTable, tasksTable } from "../db/schema.js"
+import { dagNodesTable, featuresTable, patchesTable, tasksTable } from "../db/schema.js"
 import type { ExecutionPolicy, RuntimeName } from "../runtime/shared/contracts.js"
 import { ClaudeRuntime } from "../runtime/claude/adapter.js"
 import { CodexRuntime } from "../runtime/codex/adapter.js"
@@ -108,6 +108,8 @@ export type PatchPromoteResult = {
   changedFiles: string[]
   commitHash: string | null
   unlockedTaskIds: string[]
+  baseDrifted: boolean
+  advancedFiles: string[]
   nextStep: string
 }
 
@@ -404,14 +406,8 @@ export class TaskRunService {
     }
   }
 
-  private async assertRootReadyForPromotion(repoRoot: string, patchBaseCommit: string) {
+  private async assertRootReadyForPromotion(repoRoot: string, patchBaseCommit: string, changedFiles: string[]) {
     const headCommit = (await runGit(["rev-parse", "HEAD"], repoRoot)).stdout.trim()
-    if (headCommit !== patchBaseCommit) {
-      throw new XieZhiError("CLI_USAGE_ERROR", "Patch base commit no longer matches the repository HEAD.", {
-        hint: "Promote or discard older patches before advancing newer work, or rerun the task from the current baseline."
-      })
-    }
-
     const status = (await runGit(["status", "--porcelain", "--untracked-files=all"], repoRoot)).stdout
       .split("\n")
       .map((line) => line.trimEnd())
@@ -424,6 +420,25 @@ export class TaskRunService {
         hint: `Commit, stash, or discard these files before promoting: ${status.join(", ")}`
       })
     }
+
+    if (headCommit === patchBaseCommit) {
+      return { baseDrifted: false, advancedFiles: [] as string[] }
+    }
+
+    const advancedFiles = (await runGit(["diff", "--name-only", `${patchBaseCommit}..HEAD`], repoRoot)).stdout
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .filter((filePath) => !isXieZhiPath(filePath))
+    const changedFileSet = new Set(changedFiles)
+    const overlappingFiles = advancedFiles.filter((filePath) => changedFileSet.has(filePath))
+    if (overlappingFiles.length > 0) {
+      throw new XieZhiError("CLI_USAGE_ERROR", "Patch base commit drift overlaps with promoted repository changes.", {
+        hint: `Rerun this task from the current baseline. Overlapping files: ${overlappingFiles.join(", ")}`
+      })
+    }
+
+    return { baseDrifted: true, advancedFiles }
   }
 
   private async copyPatchFilesToRoot(input: { repoRoot: string; worktreePath: string; changedFiles: string[] }) {
@@ -477,6 +492,31 @@ export class TaskRunService {
     return unlockedTaskIds
   }
 
+  private reconcileFeatureStatus(featureId: string) {
+    const tasks = this.db.select().from(tasksTable).where(eq(tasksTable.featureId, featureId)).all()
+    if (tasks.length === 0) return
+    const statuses = tasks.map((task) => task.status)
+    const featureStatus =
+      statuses.every((status) => status === "promoted")
+        ? "completed"
+        : statuses.some((status) => ["failed", "rejected"].includes(status))
+          ? "rejected"
+          : statuses.some((status) => ["running", "patched", "verified", "ready"].includes(status))
+            ? "in_progress"
+            : "draft"
+
+    this.db.update(featuresTable).set({ status: featureStatus, updatedAt: new Date().toISOString() }).where(eq(featuresTable.id, featureId)).run()
+    const featureNode = this.db
+      .select()
+      .from(dagNodesTable)
+      .where(eq(dagNodesTable.featureId, featureId))
+      .all()
+      .find((node) => node.type === "feature")
+    if (featureNode) {
+      this.db.update(dagNodesTable).set({ status: featureStatus, updatedAt: new Date().toISOString() }).where(eq(dagNodesTable.id, featureNode.id)).run()
+    }
+  }
+
   async promotePatch(cwd: string, patchId: string): Promise<PatchPromoteResult> {
     const patchService = new PatchRecordService(this.db)
     const patch = patchService.getPatch(patchId)
@@ -501,7 +541,7 @@ export class TaskRunService {
 
     const repositoryService = new RepositoryMetadataService(this.db)
     const repository = await repositoryService.refreshForCwd(cwd)
-    await this.assertRootReadyForPromotion(repository.rootPath, patch.baseCommit)
+    const promotionSafety = await this.assertRootReadyForPromotion(repository.rootPath, patch.baseCommit, patch.changedFiles)
     await this.copyPatchFilesToRoot({
       repoRoot: repository.rootPath,
       worktreePath: patch.worktreePath,
@@ -529,6 +569,9 @@ export class TaskRunService {
     }
 
     const unlockedTaskIds = task ? this.unlockReadyTasks(task.featureId) : []
+    if (task) {
+      this.reconcileFeatureStatus(task.featureId)
+    }
     const promotedAt = new Date().toISOString()
     patchService.updatePatchPromotion(patchId, {
       promotedAt,
@@ -548,6 +591,8 @@ export class TaskRunService {
       changedFiles: patch.changedFiles,
       commitHash,
       unlockedTaskIds,
+      baseDrifted: promotionSafety.baseDrifted,
+      advancedFiles: promotionSafety.advancedFiles,
       nextStep:
         unlockedTaskIds.length > 0
           ? `Next task is ready: ${unlockedTaskIds[0]}. Run \`xiezhi agent run ${unlockedTaskIds[0]} --runtime ${patch.runtimeName}\`.`

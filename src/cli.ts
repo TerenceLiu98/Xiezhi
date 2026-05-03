@@ -2,7 +2,14 @@
 
 import { Command } from "commander"
 
-import { runAgentPlanCommand, runAgentTaskCommand } from "./commands/agent.js"
+import {
+  runAgentFeedbackCommand,
+  runAgentPlanCommand,
+  runAgentReadyCommand,
+  runAgentRunReadyCommand,
+  runAgentSessionShowCommand,
+  runAgentTaskCommand
+} from "./commands/agent.js"
 import { runDagShowCommand } from "./commands/dag.js"
 import { runDoctorCommand } from "./commands/doctor.js"
 import { runIndexCommand } from "./commands/index.js"
@@ -150,6 +157,142 @@ agentCommand
     }
   })
 
+const agentSessionCommand = agentCommand.command("session").description("Inspect agent sessions")
+
+agentSessionCommand
+  .command("show")
+  .description("Show an agent session and its evidence")
+  .argument("[sessionId]", "Optional session id")
+  .option("--json", "Print machine-readable JSON")
+  .action(async (sessionId?: string, options?: { json?: boolean }) => {
+    const result = runAgentSessionShowCommand(process.cwd(), sessionId)
+    if (options?.json) {
+      console.log(JSON.stringify(result, null, 2))
+      return
+    }
+    printSection("Agent Session", [
+      `status: ${formatStatus(result.status)}`,
+      `session: ${result.session.id}`,
+      `goal: ${result.session.goal}`,
+      `runtime: ${result.session.planningRuntimeName}`,
+      `session status: ${formatStatus(result.session.status)}`,
+      `feature: ${result.session.featureId ?? "none"}`,
+      `next action: ${result.nextAction}`
+    ])
+    if (result.feature) {
+      printCard("Feature", [
+        `${result.feature.title} · ${formatStatus(result.feature.status)}`,
+        `tasks: ${result.feature.taskCount}`,
+        `ready: ${result.feature.readyCount}`,
+        `blocked: ${result.feature.blockedCount}`,
+        `done: ${result.feature.doneCount}`
+      ])
+    }
+    printList(
+      "Agent Runs",
+      result.agentRuns.map((run) => `${run.id} · ${formatStatus(run.status)} · task ${shortenId(run.taskId)} · patch ${run.patchId ? shortenId(run.patchId) : "none"}`),
+      { emptyText: "none" }
+    )
+    printList(
+      "Patches",
+      result.patches.map((patch) => `${shortenId(patch.id)} · ${formatStatus(patch.status)} · task ${shortenId(patch.taskId)} · files ${patch.changedFiles.length} · warnings ${patch.warnings} · blocking ${patch.blockingViolations}`),
+      { emptyText: "none" }
+    )
+    printList(
+      "Promotion Decisions",
+      result.promotionDecisions.map((decision) => `${decision.agentRunId}: ${decision.summary}`),
+      { emptyText: "none" }
+    )
+  })
+
+agentCommand
+  .command("ready")
+  .description("Show machine-readable ready queue and safe parallel groups")
+  .argument("[featureId]", "Optional feature id")
+  .option("--json", "Print machine-readable JSON")
+  .action(async (featureId?: string, options?: { json?: boolean }) => {
+    const result = runAgentReadyCommand(process.cwd(), featureId)
+    if (options?.json) {
+      console.log(JSON.stringify(result, null, 2))
+      return
+    }
+    printSection("Agent Ready", [
+      `status: ${formatStatus(result.status)}`,
+      `feature id: ${result.featureId}`,
+      `title: ${result.featureTitle}`,
+      `feature status: ${formatStatus(result.featureStatus)}`,
+      `ready: ${result.readyTasks.length}`,
+      `blocked: ${result.blockedTasks.length}`,
+      `done: ${result.doneTasks.length}`,
+      `next action: ${result.nextAction}`
+    ])
+    for (const task of result.readyTasks) {
+      printCard(`${shortenId(task.id)} · ${task.title}`, [
+        `scope: ${formatInlineList(task.allowedFiles, { emptyText: "n/a", max: 5 })}`,
+        `can run with: ${formatInlineList(task.canRunWith.map((id) => shortenId(id)), { emptyText: "none", max: 5 })}`,
+        `run: xiezhi agent run ${task.id} --runtime opencode`
+      ])
+    }
+  })
+
+agentCommand
+  .command("run-ready")
+  .description("Run one safe ready wave, optionally verifying/reviewing/promoting with agent decisions")
+  .argument("[featureId]", "Optional feature id")
+  .option("--runtime <runtime>", "Runtime to use", "opencode")
+  .option("--parallel <count>", "Maximum parallel tasks", "2")
+  .option("--auto", "Verify/review/promote after task execution")
+  .option("--decision-runtime <runtime>", "Runtime for warning promotion decisions", "opencode")
+  .action(
+    async (
+      featureId: string | undefined,
+      options: { runtime: RuntimeName; parallel: string; auto?: boolean; decisionRuntime: RuntimeName }
+    ) => {
+      const result = await runAgentRunReadyCommand(process.cwd(), {
+        featureId,
+        runtime: options.runtime,
+        parallel: Number.parseInt(options.parallel, 10) || 2,
+        auto: Boolean(options.auto),
+        decisionRuntime: options.decisionRuntime
+      })
+      printSection("Agent Run Ready", [
+        `status: ${formatStatus(result.status)}`,
+        `feature id: ${result.featureId}`,
+        `selected: ${result.selectedTaskIds.length}`,
+        `skipped: ${result.skipped.length}`,
+        `next ready: ${formatInlineList(result.nextReadyTaskIds.map((id) => shortenId(id)), { emptyText: "none", max: 5 })}`
+      ])
+      printList(
+        "Runs",
+        result.runs.map((run) => `${shortenId(run.taskId)} · patch ${shortenId(run.patchId)} · verify ${run.verifyStatus ?? "n/a"} · promotion ${run.promotion}`),
+        { emptyText: "none" }
+      )
+      printList(
+        "Skipped",
+        result.skipped.map((skip) => `${shortenId(skip.taskId)}: ${skip.reason}`),
+        { emptyText: "none" }
+      )
+    }
+  )
+
+agentCommand
+  .command("feedback")
+  .description("Ask an agent to turn user feedback into a follow-up AgentPlan")
+  .argument("<feedback>", "Feedback to turn into a follow-up plan")
+  .option("--runtime <runtime>", "Runtime to use", "opencode")
+  .option("--feature <featureId>", "Optional source feature id")
+  .action(async (feedback: string, options: { runtime: RuntimeName; feature?: string }) => {
+    const result = await runAgentFeedbackCommand(process.cwd(), feedback, options.runtime, options.feature)
+    printSection("Agent Feedback", [
+      `status: ${formatStatus(result.status)}`,
+      `agent session: ${result.agentSessionId}`,
+      `source feature: ${result.sourceFeatureId ?? "none"}`,
+      `new feature: ${result.featureId}`,
+      `title: ${result.title}`,
+      `tasks: ${result.taskCount}`
+    ])
+  })
+
 agentCommand
   .command("run")
   .description("Compile a task assignment, run the selected agent runtime, and capture a patch")
@@ -209,7 +352,8 @@ taskCommand
   .argument("[featureId]", "Optional feature id")
   .action(async (featureId?: string) => {
     const result = await runTaskListCommand(process.cwd(), featureId)
-    const readyTask = result.tasks.find((task) => task.status === "ready") ?? result.tasks[0]
+    const readyTask = result.tasks.find((task) => task.status === "ready")
+    const allPromoted = result.tasks.length > 0 && result.tasks.every((task) => task.status === "promoted")
 
     printSection("Tasks", [
       `status: ${formatStatus(result.status)}`,
@@ -222,6 +366,16 @@ taskCommand
         `${formatStatus(readyTask.status)} ${readyTask.title}`,
         `task: ${shortenId(readyTask.id)}  full: ${readyTask.id}`,
         `run: xiezhi agent run ${readyTask.id} --runtime opencode`
+      ])
+    } else if (allPromoted || result.featureStatus === "completed") {
+      printCard("Feature Complete", [
+        "All tasks have been promoted.",
+        "Run app-level checks or capture new feedback with `xiezhi agent feedback \"...\" --runtime opencode`."
+      ])
+    } else {
+      printCard("Next Up", [
+        "No ready task is available.",
+        "Inspect blocked or patched work with `xiezhi agent ready` or `xiezhi agent session show`."
       ])
     }
 
@@ -300,6 +454,9 @@ taskCommand
         `status: ${formatStatus(result.latestAssignment.status)}`,
         `goal: ${result.latestAssignment.goal}`
       ])
+    }
+    if (result.latestPromotionDecision) {
+      printCard("Latest Promotion Decision", [result.latestPromotionDecision.summary])
     }
     printList(
       "Checks",
@@ -426,6 +583,7 @@ program
     printList(
       "Semantic Diff",
       [
+        `coverage: ${result.semanticDiff.semanticCoverage.mode} (${result.semanticDiff.semanticCoverage.analyzedFiles.length} AST, ${result.semanticDiff.semanticCoverage.fileOnlyFiles.length} file-only)`,
         `added nodes: ${result.semanticDiff.addedNodes.length}`,
         `removed nodes: ${result.semanticDiff.removedNodes.length}`,
         `modified nodes: ${result.semanticDiff.modifiedNodes.length}`,
@@ -461,6 +619,7 @@ program
     printList(
       "Semantic Changes",
       [
+        `coverage: ${result.semanticDiff.semanticCoverage.mode} (${result.semanticDiff.semanticCoverage.analyzedFiles.length} AST, ${result.semanticDiff.semanticCoverage.fileOnlyFiles.length} file-only)`,
         ...result.semanticDiff.addedNodes.map((node) => `added ${node.kind}: ${node.symbol ?? node.path}`),
         ...result.semanticDiff.removedNodes.map((node) => `removed ${node.kind}: ${node.symbol ?? node.path}`),
         ...result.semanticDiff.modifiedNodes.map((node) => `modified ${node.kind}: ${node.symbol ?? node.path}`),
@@ -524,6 +683,7 @@ patchCommand
       `repo root: ${result.repoRoot}`,
       `changed files: ${result.changedFiles.length}`,
       `commit: ${result.commitHash ?? "none"}`,
+      `base drifted: ${String(result.baseDrifted)}`,
       `unlocked tasks: ${formatInlineList(result.unlockedTaskIds, { emptyText: "none", max: 3 })}`,
       `next step: ${result.nextStep}`
     ])
@@ -532,6 +692,9 @@ patchCommand
 
 program.hook("preAction", async (thisCommand, actionCommand) => {
   if (actionCommand.name() === "init" || actionCommand.name() === "doctor") {
+    return
+  }
+  if (actionCommand.opts<{ json?: boolean }>().json) {
     return
   }
 

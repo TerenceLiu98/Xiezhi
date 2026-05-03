@@ -1,6 +1,9 @@
 project:
   name: your-repo
-  language: typescript
+  languages:
+    - typescript
+    - javascript
+    - python
 runtime:
   default: codex
 commands:

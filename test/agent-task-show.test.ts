@@ -13,7 +13,8 @@ import { runVerifyCommand } from "../src/commands/verify.js"
 import { openDatabaseConnection } from "../src/db/client.js"
 import * as schema from "../src/db/schema.js"
 import { PatchRecordService } from "../src/services/patch-record-service.js"
-import { createTempNoteTakingRepo, createTempTsRepo } from "./support/git-fixture.js"
+import { importAgentPlan } from "../src/services/planning-service.js"
+import { createTempNoteTakingRepo, createTempPythonRepo, createTempTsRepo } from "./support/git-fixture.js"
 import { importNoteTakingPlan, importRouterPlan, routerAgentPlan } from "./support/agent-plan-fixture.js"
 
 async function appendPassingVerificationLogs(cwd: string, patchId: string) {
@@ -129,4 +130,89 @@ describe("agent run and task show", () => {
     expect(finalTaskShow.latestPatch?.status).toBe("accepted")
     expect(finalTaskShow.violations.some((violation) => violation.type === "semantic_scope_violation")).toBe(false)
   }, 30000)
+
+  it("flags Python semantic scope drift inside an allowed file", async () => {
+    const cwd = await createTempPythonRepo("xiezhi-python-semantic-scope-")
+    await runInit(cwd)
+    await runIndexCommand({ cwd, mode: "full" })
+    const plan = importAgentPlan(
+      cwd,
+      {
+        version: "v1",
+        goal: "Update add only",
+        title: "Python scoped edit",
+        requirements: ["Only add may change"],
+        tasks: [
+          {
+            key: "update-add",
+            title: "Update add",
+            summary: "Change the add function only",
+            dependsOn: [],
+            allowedFiles: ["src/math_utils.py"],
+            forbiddenFiles: [".xiezhi/"],
+            allowedSymbols: ["add"],
+            forbiddenSymbols: [],
+            acceptance: ["add remains callable"],
+            checks: [],
+            expectedOutputs: ["Python function update"],
+            rationale: ["Exercise Python semantic scope"]
+          }
+        ]
+      },
+      { runtimeName: "test-agent" }
+    )
+    const task = plan.tasks[0]!
+    const taskRun = await runTaskRunCommand(cwd, task.id, "opencode")
+    const filePath = path.join(taskRun.worktreePath, "src", "math_utils.py")
+    const source = await readFile(filePath, "utf8")
+    await writeFile(filePath, source.replace("return left - right", "return right - left"), "utf8")
+    await appendPassingVerificationLogs(cwd, taskRun.patchId)
+
+    const verify = await runVerifyCommand(cwd, taskRun.patchId)
+
+    expect(verify.status).toBe("rejected")
+    expect(verify.semanticDiff.semanticCoverage.mode).toBe("ast")
+    expect(verify.semanticDiff.modifiedNodes.some((node) => node.symbol === "subtract")).toBe(true)
+    expect(verify.blockingViolations.some((violation) => violation.type === "semantic_scope_violation")).toBe(true)
+  }, 25000)
+
+  it("reports file-only semantic coverage for unsupported changed files", async () => {
+    const cwd = await createTempTsRepo("xiezhi-file-only-coverage-")
+    await runInit(cwd)
+    await runIndexCommand({ cwd, mode: "full" })
+    const plan = importAgentPlan(
+      cwd,
+      {
+        version: "v1",
+        goal: "Update data file",
+        title: "Unsupported file coverage",
+        requirements: ["Update data"],
+        tasks: [
+          {
+            key: "data",
+            title: "Update data",
+            summary: "Change a non-AST data file",
+            dependsOn: [],
+            allowedFiles: ["src/data.txt"],
+            forbiddenFiles: [".xiezhi/"],
+            allowedSymbols: [],
+            forbiddenSymbols: [],
+            acceptance: ["data file changes"],
+            checks: [],
+            expectedOutputs: ["data update"],
+            rationale: ["Exercise file-only semantic coverage"]
+          }
+        ]
+      },
+      { runtimeName: "test-agent" }
+    )
+    const taskRun = await runTaskRunCommand(cwd, plan.tasks[0]!.id, "opencode")
+    await writeFile(path.join(taskRun.worktreePath, "src", "data.txt"), "updated\n", "utf8")
+    await appendPassingVerificationLogs(cwd, taskRun.patchId)
+
+    const verify = await runVerifyCommand(cwd, taskRun.patchId)
+
+    expect(verify.semanticDiff.semanticCoverage.mode).toBe("file-only")
+    expect(verify.semanticDiff.semanticCoverage.fileOnlyFiles).toContain("src/data.txt")
+  }, 25000)
 })

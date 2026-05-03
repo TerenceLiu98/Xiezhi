@@ -10,6 +10,7 @@ export async function runTaskListCommand(cwd: string, featureId?: string) {
     status: "loaded" as const,
     featureId: view.feature.id,
     featureTitle: view.feature.title,
+    featureStatus: view.feature.status,
     tasks: view.tasks
   }
 }

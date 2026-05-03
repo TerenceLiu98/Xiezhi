@@ -3,6 +3,7 @@ import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises"
 import path from "node:path"
 
 import { describe, expect, it } from "vitest"
+import { execa } from "execa"
 
 import { runIndexCommand } from "../src/commands/index.js"
 import { runInit } from "../src/commands/init.js"
@@ -191,6 +192,46 @@ describe("verification and review commands", () => {
     await expect(runPatchPromoteCommand(cwd, taskRun.patchId)).rejects.toMatchObject({
       code: "CLI_USAGE_ERROR",
       message: expect.stringContaining("uncommitted changes")
+    })
+  }, 20000)
+
+  it("promotes a verified patch after non-overlapping base drift", async () => {
+    const cwd = await createTempTsRepo("xiezhi-promote-non-overlap-")
+    await runInit(cwd)
+    const plan = importRouterPlan(cwd)
+    const task = plan.tasks[0]!
+    const taskRun = await runTaskRunCommand(cwd, task.id, "opencode")
+
+    await writeFile(path.join(taskRun.worktreePath, "src", "router.tsx"), "export function getUser(id: string) {\n  return { id, ok: true }\n}\n", "utf8")
+    await appendPassingVerificationLogs(cwd, taskRun.patchId)
+    await runVerifyCommand(cwd, taskRun.patchId)
+    await writeFile(path.join(cwd, "README.md"), "# Advanced independently\n", "utf8")
+    await execa("git", ["add", "README.md"], { cwd })
+    await execa("git", ["commit", "-m", "advance readme"], { cwd })
+
+    const promote = await runPatchPromoteCommand(cwd, taskRun.patchId)
+
+    expect(promote.patchStatus).toBe("promoted")
+    expect(promote.baseDrifted).toBe(true)
+    expect(promote.advancedFiles).toContain("README.md")
+  }, 20000)
+
+  it("refuses to promote after overlapping base drift", async () => {
+    const cwd = await createTempTsRepo("xiezhi-promote-overlap-")
+    await runInit(cwd)
+    const plan = importRouterPlan(cwd)
+    const taskRun = await runTaskRunCommand(cwd, plan.tasks[0]!.id, "opencode")
+
+    await writeFile(path.join(taskRun.worktreePath, "src", "router.tsx"), "export function getUser(id: string) {\n  return { id, fromPatch: true }\n}\n", "utf8")
+    await appendPassingVerificationLogs(cwd, taskRun.patchId)
+    await runVerifyCommand(cwd, taskRun.patchId)
+    await writeFile(path.join(cwd, "src", "router.tsx"), "export function getUser(id: string) {\n  return { id, fromRoot: true }\n}\n", "utf8")
+    await execa("git", ["add", "src/router.tsx"], { cwd })
+    await execa("git", ["commit", "-m", "advance router"], { cwd })
+
+    await expect(runPatchPromoteCommand(cwd, taskRun.patchId)).rejects.toMatchObject({
+      code: "CLI_USAGE_ERROR",
+      message: expect.stringContaining("base commit drift overlaps")
     })
   }, 20000)
 

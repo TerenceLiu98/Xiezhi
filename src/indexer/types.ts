@@ -3,6 +3,7 @@ export type CodeNodeKind =
   | "module"
   | "function"
   | "class"
+  | "method"
   | "interface"
   | "type"
   | "route"

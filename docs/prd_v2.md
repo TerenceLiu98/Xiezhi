@@ -8,7 +8,7 @@
 
 ## 1. Product Summary
 
-**XieZhi is an agent-native DAG/AST framework that lets a main agent turn plans into durable task state and constrain code changes through patch evidence and semantic verification.**
+**XieZhi is an agent-native DAG/multi-language AST framework that lets a main agent turn plans into durable task state and constrain code changes through patch evidence and semantic verification.**
 
 In simpler terms:
 
@@ -37,7 +37,7 @@ Common pain points:
 7. It is difficult to map a patch back to the original task or user intent.
 8. Long-running vibe coding sessions can drift away from the original product direction.
 
-XieZhi aims to solve this by turning agent plans into task graphs, giving subagents scoped work units, and verifying patches using file-level and AST/symbol-level analysis.
+XieZhi aims to solve this by turning agent plans into task graphs, giving subagents scoped work units, and verifying patches using file-level and multi-language AST/symbol-level analysis.
 
 ---
 
@@ -45,11 +45,11 @@ XieZhi aims to solve this by turning agent plans into task graphs, giving subage
 
 ### 3.1 One-line Positioning
 
-> A task graph and AST guardrail layer for coding agents.
+> A task graph and multi-language AST guardrail layer for coding agents.
 
 ### 3.2 Longer Positioning
 
-> XieZhi is an agent-native control plane that turns LLM plans into executable task graphs and verifies agent patches with AST-level impact analysis.
+> XieZhi is an agent-native control plane that turns LLM plans into executable task graphs and verifies agent patches with multi-language AST-level impact analysis.
 
 ### 3.3 What XieZhi Is
 
@@ -57,7 +57,7 @@ XieZhi is:
 
 - A main-agent orchestration runtime.
 - A task graph system for coding agents.
-- An AST-aware patch verification layer.
+- A multi-language AST-aware patch verification layer.
 - A control plane for subagent execution.
 - A bridge over existing coding agents such as Claude Code, Codex, OpenCode, and others.
 
@@ -118,6 +118,8 @@ The workflow should not be rigidly hardcoded. The main agent should be able to d
 - Generate a feature DAG.
 - Generate a task DAG.
 - Spawn subagents.
+
+The MVP starts with TypeScript, TSX, JavaScript, JSX, and Python semantic adapters. Unsupported languages must be shown as file-scope evidence rather than fake AST certainty.
 - Split a task.
 - Retry a failed task.
 - Ask the user for a decision.

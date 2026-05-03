@@ -7,8 +7,7 @@ import { assertDatabaseInitialized, openDatabaseConnection, type XieZhiDatabase 
 import * as schema from "../db/schema.js"
 import { codeEdgesTable, codeNodesTable } from "../db/schema.js"
 import { runGit } from "../core/git.js"
-import { extractCodeGraph } from "../indexer/extractor.js"
-import { getSourceFilesByRelativePath, loadProject } from "../indexer/project-loader.js"
+import { discoverSourcePaths, extractCodeGraph, isSupportedSourcePath } from "../indexer/language-adapters.js"
 import type { IndexExtraction, IndexSummary } from "../indexer/types.js"
 import { RepositoryMetadataService } from "./repository-metadata-service.js"
 
@@ -44,7 +43,7 @@ async function detectIncrementalPaths(repoRoot: string) {
 
   for (const line of status.split("\n").filter(Boolean)) {
     const filePath = line.slice(3).trim()
-    if (!filePath.endsWith(".ts") && !filePath.endsWith(".tsx")) {
+    if (!isSupportedSourcePath(filePath)) {
       continue
     }
     if (line.startsWith("D ") || line.startsWith(" D")) {
@@ -94,10 +93,10 @@ export class CodeIndexService {
     const repositoryService = new RepositoryMetadataService(this.db)
     const repository = await repositoryService.refreshForCwd(repoRoot)
 
-    const { project, sourceFiles } = loadProject(repoRoot)
+    const sourcePaths = await discoverSourcePaths(repoRoot)
 
     let executedMode: IndexMode = requestedMode
-    let targetSourceFiles = sourceFiles
+    let targetSourcePaths = sourcePaths
     let deletedPaths: string[] = []
 
     if (requestedMode === "incremental") {
@@ -105,8 +104,8 @@ export class CodeIndexService {
       deletedPaths = incremental.deletedPaths
 
       const shouldFallbackToFull =
-        sourceFiles.length > 0 &&
-        incremental.changedPaths.length + incremental.deletedPaths.length >= sourceFiles.length
+        sourcePaths.length > 0 &&
+        incremental.changedPaths.length + incremental.deletedPaths.length >= sourcePaths.length
 
       if (shouldFallbackToFull) {
         executedMode = "full"
@@ -134,7 +133,7 @@ export class CodeIndexService {
           }
         }
 
-        const filesToIndex = getSourceFilesByRelativePath(repoRoot, sourceFiles, incremental.changedPaths)
+        const filesToIndex = incremental.changedPaths.filter((filePath) => sourcePaths.includes(filePath))
 
         if (filesToIndex.length === 0) {
           return {
@@ -157,7 +156,7 @@ export class CodeIndexService {
           }
         }
 
-        targetSourceFiles = filesToIndex
+        targetSourcePaths = filesToIndex
         deleteExistingForPaths(this.db, repository.id, [...incremental.changedPaths, ...deletedPaths])
       }
     } else {
@@ -165,11 +164,10 @@ export class CodeIndexService {
       this.db.delete(codeNodesTable).where(eq(codeNodesTable.repoId, repository.id)).run()
     }
 
-    const extraction = extractCodeGraph({
+    const extraction = await extractCodeGraph({
       repoId: repository.id,
       repoRoot,
-      project,
-      sourceFiles: targetSourceFiles
+      paths: targetSourcePaths
     })
 
     if (extraction.nodes.length > 0) {

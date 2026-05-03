@@ -50,6 +50,8 @@ node ../../dist/cli.js init
 node ../../dist/cli.js agent plan "build an Electron note-taking app with local notes, search, tags, and a polished editor" --runtime opencode
 node ../../dist/cli.js dag show
 node ../../dist/cli.js task list
+node ../../dist/cli.js agent session show
+node ../../dist/cli.js agent ready --json
 node ../../dist/cli.js task show <task-id>
 node ../../dist/cli.js agent run <task-id> --runtime opencode
 node ../../dist/cli.js task show <task-id>
@@ -60,8 +62,20 @@ npm test
 npm run build
 ```
 
+For ready waves that have non-overlapping scope, the agent may use:
+
+```text
+node ../../dist/cli.js agent run-ready --runtime opencode --parallel 2 --auto --decision-runtime opencode
+```
+
 The OpenCode planning run must return strict AgentPlan JSON. XieZhi validates that JSON into a feature DAG, task DAG, Intent IR v2, assignment contracts, and patch evidence.
 
 The generated app files live in the XieZhi task worktree until the patch is promoted into the `demo/notetaking` repository. MVP acceptance requires the app source to exist in the main demo repository and the Electron app to start from that directory.
 
-When manual smoke testing reveals a product gap, such as a blank Electron renderer or awkward note editing, the next step is not to hand-edit the demo. The agent should turn that observation into a new AgentPlan or task revision, run the chosen runtime, and let XieZhi capture and verify the resulting patch.
+When manual smoke testing reveals a product gap, such as a blank Electron renderer or awkward note editing, the next step is not to hand-edit the demo:
+
+```text
+node ../../dist/cli.js agent feedback "describe the app issue" --runtime opencode
+```
+
+The feedback command asks the agent for a follow-up AgentPlan and starts a new bounded loop.

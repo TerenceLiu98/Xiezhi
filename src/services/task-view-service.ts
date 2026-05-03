@@ -6,6 +6,7 @@ import { assertDatabaseInitialized, openDatabaseConnection, type XieZhiDatabase 
 import * as schema from "../db/schema.js"
 import {
   agentRunsTable,
+  agentEventsTable,
   assignmentsTable,
   checksTable,
   dagNodesTable,
@@ -92,6 +93,10 @@ export type TaskShowResult = {
     status: string
     goal: string
   } | null
+  latestPromotionDecision: {
+    summary: string
+    metadata: unknown
+  } | null
   checks: Array<{ type: string; status: string; summary: string }>
   violations: Array<{ severity: string; type: string; message: string }>
   nextAction: string
@@ -161,6 +166,15 @@ export class TaskViewService {
     const assignmentRow = agentRunRow?.assignmentId
       ? this.db.select().from(assignmentsTable).where(eq(assignmentsTable.id, agentRunRow.assignmentId)).get()
       : null
+    const promotionDecisionRow = agentRunRow
+      ? this.db
+          .select()
+          .from(agentEventsTable)
+          .where(eq(agentEventsTable.agentRunId, agentRunRow.id))
+          .all()
+          .filter((event) => event.type === "promotion_decision")
+          .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0] ?? null
+      : null
 
     return {
       status: "loaded",
@@ -195,6 +209,12 @@ export class TaskViewService {
             id: assignmentRow.id,
             status: assignmentRow.status,
             goal: assignmentRow.goal
+        }
+        : null,
+      latestPromotionDecision: promotionDecisionRow
+        ? {
+            summary: promotionDecisionRow.summary,
+            metadata: safeJsonParse<unknown>(promotionDecisionRow.metadataJson, null)
           }
         : null,
       checks,

@@ -5,7 +5,7 @@
 ![Node](https://img.shields.io/badge/node-%3E%3D22-3c873a)
 ![TypeScript](https://img.shields.io/badge/built%20with-TypeScript-3178c6)
 
-XieZhi is a DAG, AST, assignment, patch, and evidence framework for AI-assisted software development.
+XieZhi is a DAG, multi-language AST, assignment, patch, and evidence framework for AI-assisted software development.
 
 Instead of letting an agent directly edit a codebase and hoping the diff looks reasonable, XieZhi adds a control layer on top of an agent runtime such as OpenCode. The agent owns planning and orchestration; XieZhi validates the agent's structured plan into DAG state, constrains what each task is allowed to change, and verifies whether the resulting patch actually matches the task.
 
@@ -41,7 +41,7 @@ User Goal
   -> Policy
   -> Coding Runtime
   -> Patch
-  -> AST Semantic Diff
+  -> Multi-language Semantic Diff
   -> Consistency Verifier
   -> Human Review
 ```
@@ -59,7 +59,7 @@ The first version is intentionally CLI-first and local-first.
 - A CLI for importing agent plans, running scoped tasks, verifying patches, and reviewing evidence
 - Feature DAG and Task DAG generation from strict AgentPlan JSON
 - Intent IR and task-scoped execution policy
-- Repository indexing for TypeScript projects
+- Repository indexing for TypeScript, JavaScript, and Python projects
 - AST-based semantic diff
 - Patch verification for out-of-scope changes, missing tests, and risky API changes
 - Worktree-isolated task execution through OpenCode
@@ -74,7 +74,7 @@ The first version is intentionally CLI-first and local-first.
 
 ## Example Workflow
 
-For an existing TypeScript repo:
+For an existing TypeScript, JavaScript, or Python repo:
 
 ```bash
 xiezhi init
@@ -82,10 +82,18 @@ xiezhi index
 xiezhi agent plan "add team invitation feature" --runtime opencode
 xiezhi dag show
 xiezhi task list
+xiezhi agent session show
+xiezhi agent ready --json
 xiezhi agent run <task-id> --runtime opencode
 xiezhi verify <patch-id>
 xiezhi review <patch-id>
 xiezhi patch promote <patch-id>
+```
+
+When the ready queue contains non-overlapping scopes, a main agent can run one safe wave:
+
+```bash
+xiezhi agent run-ready --runtime opencode --parallel 2 --auto --decision-runtime opencode
 ```
 
 For a greenfield app idea, the agent still writes the plan; XieZhi only validates and persists it:
@@ -95,6 +103,7 @@ xiezhi init
 xiezhi agent plan "build a bookkeeping app" --runtime opencode
 xiezhi dag show
 xiezhi task list
+xiezhi agent feedback "the running app needs clearer save status" --runtime opencode
 ```
 
 Example review output:

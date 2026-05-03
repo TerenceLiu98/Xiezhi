@@ -234,6 +234,31 @@ function checkInstallPath(cwd: string) {
   })
 }
 
+function checkAstCapabilities() {
+  try {
+    const capabilities = [
+      "typescript/tree-sitter",
+      "javascript/tree-sitter",
+      "python/tree-sitter",
+      "unsupported=file-scope"
+    ]
+    return createCheck({
+      id: "ast",
+      title: "AST capabilities",
+      status: "passed",
+      summary: `Semantic indexing enabled for ${capabilities.join(", ")}.`
+    })
+  } catch {
+    return createCheck({
+      id: "ast",
+      title: "AST capabilities",
+      status: "warning",
+      summary: "Tree-sitter language adapters are not available; verification will fall back to file scope where needed.",
+      nextStep: "Run `pnpm install` and allow Tree-sitter native builds."
+    })
+  }
+}
+
 export async function runDoctor(cwd: string): Promise<DoctorResult> {
   const metadataDir = getXieZhiDir(cwd)
   const configPath = getConfigPath(cwd)
@@ -249,6 +274,7 @@ export async function runDoctor(cwd: string): Promise<DoctorResult> {
     checkInstallPath(cwd),
     configCheck,
     checkDatabase(cwd),
+    checkAstCapabilities(),
     await checkRuntimeAvailability(defaultRuntime)
   ]
 

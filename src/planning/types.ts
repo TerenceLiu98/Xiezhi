@@ -1,12 +1,12 @@
 import { z } from "zod"
 
-export const featureStatusSchema = z.enum(["draft", "approved", "in_progress", "verified", "rejected"])
+export const featureStatusSchema = z.enum(["draft", "approved", "in_progress", "verified", "rejected", "completed"])
 export type FeatureStatus = z.infer<typeof featureStatusSchema>
 
 export const dagNodeTypeSchema = z.enum(["feature", "requirement", "task", "acceptance", "test"])
 export type DagNodeType = z.infer<typeof dagNodeTypeSchema>
 
-export const dagNodeStatusSchema = z.enum(["draft", "approved", "ready", "running", "patched", "verified", "promoted", "rejected", "failed"])
+export const dagNodeStatusSchema = z.enum(["draft", "approved", "ready", "running", "patched", "verified", "promoted", "completed", "rejected", "failed"])
 export type DagNodeStatus = z.infer<typeof dagNodeStatusSchema>
 
 export const dagEdgeTypeSchema = z.enum(["contains", "informs", "depends_on", "satisfies", "validates"])

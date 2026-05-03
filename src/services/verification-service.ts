@@ -17,8 +17,7 @@ import {
   tasksTable,
   violationsTable
 } from "../db/schema.js"
-import { extractCodeGraph } from "../indexer/extractor.js"
-import { getSourceFilesByRelativePath, loadProject } from "../indexer/project-loader.js"
+import { extractCodeGraph, isSupportedSourcePath } from "../indexer/language-adapters.js"
 import { runGit } from "../core/git.js"
 import type { IntentIr } from "../planning/types.js"
 import { getIntentAllowedSymbols, getIntentForbiddenSymbols } from "../planning/types.js"
@@ -93,10 +92,6 @@ function diffNodes(before: SemanticNodeSummary[], after: SemanticNodeSummary[]) 
   }
 }
 
-function exportKey(path: string, symbol: string) {
-  return `${path}:${symbol}`
-}
-
 function classifyCommand(command: string) {
   const normalized = command.toLowerCase()
   if (normalized.includes("test")) {
@@ -123,33 +118,24 @@ export class VerificationService {
     return this.db.select().from(tasksTable).where(eq(tasksTable.id, taskId)).get() ?? null
   }
 
-  private async collectExports(repoRoot: string, changedFiles: string[]) {
-    if (changedFiles.length === 0) {
-      return []
-    }
-
-    const { sourceFiles } = loadProject(repoRoot)
-    const files = getSourceFilesByRelativePath(repoRoot, sourceFiles, changedFiles)
-
-    return files.flatMap((sourceFile) => {
-      const relativePath = path.relative(repoRoot, sourceFile.getFilePath()) || sourceFile.getBaseName()
-      return [...sourceFile.getExportedDeclarations().keys()].map((symbol) => ({
-        path: relativePath,
-        symbol
-      }))
-    })
-  }
-
   private async buildSemanticDiff(input: {
     repoId: string
     repoRoot: string
     worktreePath: string
     changedFiles: string[]
   }): Promise<SemanticDiffSummary> {
-    const changedFiles = input.changedFiles.filter((value) => value.endsWith(".ts") || value.endsWith(".tsx"))
-    if (changedFiles.length === 0) {
+    const analyzedFiles = input.changedFiles.filter(isSupportedSourcePath)
+    const fileOnlyFiles = input.changedFiles.filter((value) => !isSupportedSourcePath(value))
+    const semanticCoverage: SemanticDiffSummary["semanticCoverage"] = {
+      mode: analyzedFiles.length === 0 ? "file-only" : fileOnlyFiles.length > 0 ? "partial" : "ast",
+      analyzedFiles,
+      fileOnlyFiles
+    }
+
+    if (analyzedFiles.length === 0) {
       return {
         changedFiles: input.changedFiles,
+        semanticCoverage,
         addedNodes: [],
         removedNodes: [],
         modifiedNodes: [],
@@ -161,16 +147,13 @@ export class VerificationService {
     const baselineNodes = this.db
       .select()
       .from(codeNodesTable)
-      .where(and(eq(codeNodesTable.repoId, input.repoId), inArray(codeNodesTable.path, changedFiles)))
+      .where(and(eq(codeNodesTable.repoId, input.repoId), inArray(codeNodesTable.path, analyzedFiles)))
       .all()
 
-    const { project, sourceFiles } = loadProject(input.worktreePath)
-    const worktreeFiles = getSourceFilesByRelativePath(input.worktreePath, sourceFiles, changedFiles)
-    const extraction = extractCodeGraph({
+    const extraction = await extractCodeGraph({
       repoId: input.repoId,
       repoRoot: input.worktreePath,
-      project,
-      sourceFiles: worktreeFiles
+      paths: analyzedFiles
     })
 
     const baselineSummary = normalizeNodeSummary(baselineNodes)
@@ -187,22 +170,14 @@ export class VerificationService {
 
     const nodeDiff = diffNodes(baselineSummary, patchedSummary)
 
-    const baselineExports = await this.collectExports(input.repoRoot, changedFiles)
-    const patchedExports = await this.collectExports(input.worktreePath, changedFiles)
-    const baselineExportSet = new Map(baselineExports.map((entry) => [exportKey(entry.path, entry.symbol), entry]))
-    const patchedExportSet = new Map(patchedExports.map((entry) => [exportKey(entry.path, entry.symbol), entry]))
-
     return {
       changedFiles: input.changedFiles,
+      semanticCoverage,
       addedNodes: nodeDiff.added,
       removedNodes: nodeDiff.removed,
       modifiedNodes: nodeDiff.modified,
-      addedExports: [...patchedExportSet.entries()]
-        .filter(([key]) => !baselineExportSet.has(key))
-        .map(([, value]) => value),
-      removedExports: [...baselineExportSet.entries()]
-        .filter(([key]) => !patchedExportSet.has(key))
-        .map(([, value]) => value)
+      addedExports: [],
+      removedExports: []
     }
   }
 
