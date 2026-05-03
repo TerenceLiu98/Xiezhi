@@ -77,6 +77,7 @@ export class ScaffoldRuntime implements CodingRuntime {
     return {
       taskId: input.taskId,
       runtime: this.name,
+      mode: "scaffold",
       success: true,
       changedFiles: [],
       diff: "",

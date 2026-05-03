@@ -11,9 +11,9 @@ import type { ExecutionPolicy, RuntimeName } from "../runtime/shared/contracts.j
 import { ClaudeRuntime } from "../runtime/claude/adapter.js"
 import { CodexRuntime } from "../runtime/codex/adapter.js"
 import { OpenCodeRuntime } from "../runtime/opencode/adapter.js"
-import { runGit } from "../core/git.js"
 import { XieZhiError } from "../core/errors.js"
 import { PatchRecordService } from "./patch-record-service.js"
+import { capturePatchState } from "./patch-state.js"
 import { RepositoryMetadataService } from "./repository-metadata-service.js"
 
 type StoredTask = typeof tasksTable.$inferSelect
@@ -44,20 +44,11 @@ function getRuntimeAdapter(runtime: RuntimeName) {
   throw new XieZhiError("NOT_IMPLEMENTED", `Runtime ${runtime} is not implemented yet.`)
 }
 
-async function capturePatchState(worktreePath: string) {
-  const changedFiles = (await runGit(["diff", "--name-only"], worktreePath)).stdout
-    .split("\n")
-    .map((value) => value.trim())
-    .filter(Boolean)
-  const diff = (await runGit(["diff", "--no-ext-diff"], worktreePath)).stdout
-
-  return { changedFiles, diff }
-}
-
 export type TaskRunResult = {
   status: "captured"
   taskId: string
   runtime: RuntimeName
+  mode: "real" | "scaffold"
   patchId: string
   patchStatus: string
   taskStatus: string
@@ -76,6 +67,11 @@ export type TaskRunResult = {
     command: string
     exitCode: number
   }>
+}
+
+export type TaskRetryResult = Omit<TaskRunResult, "status"> & {
+  status: "retried"
+  previousPatchId: string
 }
 
 export type TaskDiscardResult = {
@@ -200,6 +196,7 @@ export class TaskRunService {
       status: "captured",
       taskId,
       runtime,
+      mode: runtimeResult.mode ?? "scaffold",
       patchId,
       patchStatus: storedPatch.status,
       taskStatus: runtimeResult.success ? "running" : "rejected",
@@ -208,7 +205,13 @@ export class TaskRunService {
       commandLogs: runtimeResult.commandLogs.length,
       eventCount: runtimeResult.events.length,
       success: runtimeResult.success,
-      nextStep: `Run \`xz verify ${patchId}\` after verification is implemented.`,
+      nextStep: runtimeResult.success
+        ? patchState.changedFiles.length > 0
+          ? `Run \`xz verify ${patchId}\` to verify the current worktree patch.`
+          : runtimeResult.mode === "real"
+            ? `The runtime completed without captured edits. Edit ${worktree.path}, then run \`xz verify ${patchId}\` or \`xz task retry ${patchId} --runtime ${runtime}\`.`
+            : `This run used the scaffold adapter. Edit ${worktree.path}, then run \`xz verify ${patchId}\` or \`xz task retry ${patchId} --runtime ${runtime}\`.`
+        : `Review the command summary, then retry with \`xz task retry ${patchId} --runtime ${runtime}\` or discard with \`xz task discard ${patchId}\`.`,
       timeline,
       commands: runtimeResult.commandLogs.map((log) => ({
         command: log.command,
@@ -249,6 +252,39 @@ export class TaskRunService {
       nextStep: `Re-run \`xz task run ${patch.taskId} --runtime ${patch.runtimeName}\` when you want to retry.`
     }
   }
+
+  async retryPatch(cwd: string, patchId: string, runtimeOverride?: RuntimeName): Promise<TaskRetryResult> {
+    const patchService = new PatchRecordService(this.db)
+    const patch = patchService.getPatch(patchId)
+
+    if (!patch) {
+      throw new XieZhiError("CLI_USAGE_ERROR", `Patch ${patchId} was not found.`, {
+        hint: "Run `xz review <patch-id>` or inspect the patches table to find a valid patch id."
+      })
+    }
+
+    const repositoryService = new RepositoryMetadataService(this.db)
+    const repository = await repositoryService.refreshForCwd(cwd)
+    const worktreeManager = new WorktreeManager()
+
+    await worktreeManager.removeWorktree(patch.worktreePath, repository.rootPath)
+    patchService.updatePatchStatus(patchId, "discarded")
+    this.db
+      .update(tasksTable)
+      .set({
+        status: "ready"
+      })
+      .where(eq(tasksTable.id, patch.taskId))
+      .run()
+
+    const rerun = await this.runTask(cwd, patch.taskId, (runtimeOverride ?? patch.runtimeName) as RuntimeName)
+
+    return {
+      ...rerun,
+      status: "retried",
+      previousPatchId: patchId
+    }
+  }
 }
 
 export async function runTask(cwd: string, taskId: string, runtime: RuntimeName) {
@@ -268,6 +304,17 @@ export async function discardPatch(cwd: string, patchId: string) {
     assertDatabaseInitialized(cwd, sqlite)
     const service = new TaskRunService(drizzle(sqlite, { schema }))
     return await service.discardPatch(cwd, patchId)
+  } finally {
+    sqlite.close()
+  }
+}
+
+export async function retryPatch(cwd: string, patchId: string, runtimeOverride?: RuntimeName) {
+  const sqlite = openDatabaseConnection(cwd)
+  try {
+    assertDatabaseInitialized(cwd, sqlite)
+    const service = new TaskRunService(drizzle(sqlite, { schema }))
+    return await service.retryPatch(cwd, patchId, runtimeOverride)
   } finally {
     sqlite.close()
   }

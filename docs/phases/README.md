@@ -31,6 +31,8 @@ init
 | 4 | Execution | runtime adapters and controlled task execution | one task can run in isolated mode through a runtime |
 | 5 | Verification | semantic diff, verifier, review report | patch can be accepted or rejected with evidence |
 | 6 | Alpha | multi-runtime hardening and demo preparation | alpha release criteria are satisfied |
+| 7 | Runtime Integration | replace scaffold adapters with real runtime execution | at least one runtime produces real controlled edits |
+| 8 | Release Workflow | external alpha onboarding, reports, and CI guardrails | a new team can install, demo, and validate XieZhi repeatably |
 
 ## Suggested Build Order
 
@@ -48,3 +50,5 @@ init
 - [phase-4-execution.md](/Users/terenceliu/Downloads/development/xiezhi/docs/phases/phase-4-execution.md:1)
 - [phase-5-verification.md](/Users/terenceliu/Downloads/development/xiezhi/docs/phases/phase-5-verification.md:1)
 - [phase-6-alpha.md](/Users/terenceliu/Downloads/development/xiezhi/docs/phases/phase-6-alpha.md:1)
+- [phase-7-runtime-integration.md](/Users/terenceliu/Downloads/development/xiezhi/docs/phases/phase-7-runtime-integration.md:1)
+- [phase-8-release-workflow.md](/Users/terenceliu/Downloads/development/xiezhi/docs/phases/phase-8-release-workflow.md:1)

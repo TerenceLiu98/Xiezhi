@@ -45,6 +45,7 @@ export type RuntimeUsage = {
 export type RunTaskResult = {
   taskId: string
   runtime: RuntimeName
+  mode?: "real" | "scaffold"
   success: boolean
   changedFiles: string[]
   diff: string

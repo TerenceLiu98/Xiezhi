@@ -19,12 +19,14 @@ Turn the working prototype into a stable alpha that satisfies the PRD release ba
 - Three fixture repos or equivalent demo targets
 - One accepted patch demo and one rejected patch demo
 - Regression coverage for planner, runtime normalization, semantic diff, and verifier
+- Operator-facing alpha docs in `docs/alpha/`
 
 ## Acceptance Criteria
 
 - The alpha release criteria in the PRD are satisfied
 - At least OpenCode plus one additional runtime path are demoable
 - Failure modes produce actionable next steps instead of raw stack traces
+- `pnpm smoke:alpha` covers warning, accepted, and rejected verification outcomes
 
 ## Dependencies
 

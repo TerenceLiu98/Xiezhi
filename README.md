@@ -101,7 +101,28 @@ Warnings:
 
 ## Status
 
-This repo is currently in the PRD and early build stage.
+This repo is now at a `v1 alpha` with real runtime bridges for the CLIs available on the local machine.
+
+- The control loop is real
+- OpenCode, Claude, and Codex share one runtime orchestration surface
+- Claude and Codex can use real CLI bridges when available
+- OpenCode degrades cleanly to a scaffold fallback when the CLI is unavailable
+
+## Alpha Smoke
+
+```bash
+pnpm typecheck
+pnpm test
+pnpm build
+pnpm smoke:alpha
+```
+
+The alpha smoke path covers:
+
+- `warning` verification
+- `accepted` verification
+- `rejected` verification
+- discard / retry operator recovery
 
 ## Roadmap Focus
 

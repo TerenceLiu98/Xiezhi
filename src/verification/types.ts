@@ -29,6 +29,7 @@ export type VerifyPatchResult = {
   status: "accepted" | "warning" | "rejected"
   patchId: string
   taskId: string
+  runtimeName: string
   patchStatus: string
   taskStatus: string
   goal: string

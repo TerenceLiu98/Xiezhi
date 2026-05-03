@@ -27,6 +27,7 @@ import type {
   VerifyPatchResult
 } from "../verification/types.js"
 import { PatchRecordService } from "./patch-record-service.js"
+import { capturePatchState } from "./patch-state.js"
 import { RepositoryMetadataService } from "./repository-metadata-service.js"
 
 function safeJsonParse<T>(value: string | null, fallback: T): T {
@@ -373,15 +374,25 @@ export class VerificationService {
     const repository = await repositoryService.refreshForCwd(cwd)
     const task = this.getTask(patch.taskId)
     const intent = safeJsonParse<IntentIr | null>(task.intentIrJson, null)
+    const currentPatchState = await capturePatchState(patch.worktreePath)
+    const changedFiles = currentPatchState.changedFiles.length > 0 ? currentPatchState.changedFiles : patch.changedFiles
+
+    if (changedFiles.join("\n") !== patch.changedFiles.join("\n") || currentPatchState.diff !== (patch.diff ?? "")) {
+      patchService.updatePatchSnapshot(patchId, {
+        changedFiles,
+        diff: currentPatchState.diff
+      })
+    }
+
     const semanticDiff = await this.buildSemanticDiff({
       repoId: repository.id,
       repoRoot: repository.rootPath,
       worktreePath: patch.worktreePath,
-      changedFiles: patch.changedFiles
+      changedFiles
     })
     const checks = this.buildChecks(intent, patch.commandLogs)
     const violations = this.buildViolations({
-      changedFiles: patch.changedFiles,
+      changedFiles,
       allowedFiles: intent?.allowedFiles ?? [],
       forbiddenFiles: intent?.forbiddenFiles ?? [],
       semanticDiff,
@@ -407,20 +418,21 @@ export class VerificationService {
       status,
       patchId,
       taskId: task.id,
+      runtimeName: patch.runtimeName,
       patchStatus: status === "rejected" ? "rejected" : "verified",
       taskStatus: status === "rejected" ? "rejected" : "verified",
       goal: intent?.goal ?? task.id,
-      changedFiles: patch.changedFiles,
+      changedFiles,
       semanticDiff,
       checks,
       blockingViolations,
       warnings,
       nextStep:
         status === "rejected"
-          ? "Discard or retry the patch after fixing the blocking issues."
+          ? `Blocking issues found. Run \`xz task discard ${patchId}\` or \`xz task retry ${patchId} --runtime ${patch.runtimeName}\`.`
           : status === "warning"
-            ? "Review warnings, then accept or continue refining the patch."
-            : "Patch passed verification and is ready for review."
+            ? `Warnings remain. Edit ${patch.worktreePath} and rerun \`xz verify ${patchId}\`, or run \`xz review ${patchId}\` for a summary now.`
+            : `Patch passed verification. Run \`xz review ${patchId}\` for a final semantic summary.`
     }
   }
 
@@ -452,7 +464,9 @@ export class VerificationService {
       blockingViolations: verification.blockingViolations,
       nextActions: [
         verification.nextStep,
-        verification.changedFiles.length === 0 ? "Consider rerunning the task with a runtime that produces real edits." : "Inspect the semantic diff and changed files before merging."
+        verification.changedFiles.length === 0
+          ? `No edits were captured. Add changes in ${patch.worktreePath} or rerun \`xz task retry ${patchId} --runtime ${patch.runtimeName}\`.`
+          : "Inspect the semantic diff and changed files before merging."
       ]
     }
   }

@@ -20,6 +20,8 @@ describe("scaffold runtimes", () => {
 
     expect(claudeRun.runtime).toBe("claude")
     expect(codexRun.runtime).toBe("codex")
+    expect(claudeRun.mode).toBe("scaffold")
+    expect(codexRun.mode).toBe("scaffold")
 
     const sqlite = openDatabaseConnection(cwd)
     try {

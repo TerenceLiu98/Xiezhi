@@ -90,6 +90,18 @@ export class PatchRecordService {
       .run()
   }
 
+  updatePatchSnapshot(patchId: string, input: { changedFiles: string[]; diff: string }) {
+    this.db
+      .update(patchesTable)
+      .set({
+        changedFilesJson: JSON.stringify(input.changedFiles),
+        diff: input.diff,
+        updatedAt: nowIso()
+      })
+      .where(eq(patchesTable.id, patchId))
+      .run()
+  }
+
   getPatch(patchId: string) {
     const patch = this.db.select().from(patchesTable).where(eq(patchesTable.id, patchId)).get()
 

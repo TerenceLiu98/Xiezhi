@@ -23,6 +23,8 @@ This directory contains the implementation task backlog derived from the PRD and
 4. [task-004-runtime-and-execution.md](/Users/terenceliu/Downloads/development/xiezhi/docs/tasks/task-004-runtime-and-execution.md:1)
 5. [task-005-verification-and-review.md](/Users/terenceliu/Downloads/development/xiezhi/docs/tasks/task-005-verification-and-review.md:1)
 6. [task-006-alpha-and-polish.md](/Users/terenceliu/Downloads/development/xiezhi/docs/tasks/task-006-alpha-and-polish.md:1)
+7. [task-007-runtime-integration.md](/Users/terenceliu/Downloads/development/xiezhi/docs/tasks/task-007-runtime-integration.md:1)
+8. [task-008-release-workflow.md](/Users/terenceliu/Downloads/development/xiezhi/docs/tasks/task-008-release-workflow.md:1)
 
 ## How to Use This Backlog
 

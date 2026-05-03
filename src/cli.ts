@@ -7,7 +7,7 @@ import { runIndexCommand } from "./commands/index.js"
 import { runInit } from "./commands/init.js"
 import { runPlanCommand } from "./commands/plan.js"
 import { runReviewCommand } from "./commands/review.js"
-import { runTaskDiscardCommand, runTaskListCommand, runTaskRunCommand } from "./commands/task.js"
+import { runTaskDiscardCommand, runTaskListCommand, runTaskRetryCommand, runTaskRunCommand } from "./commands/task.js"
 import { runVerifyCommand } from "./commands/verify.js"
 import { loadProjectConfig } from "./config/loader.js"
 import { XieZhiError, toError } from "./core/errors.js"
@@ -147,7 +147,7 @@ taskCommand
       printCard("Next Up", [
         `${formatStatus(readyTask.status)} ${readyTask.title}`,
         `task: ${shortenId(readyTask.id)}  full: ${readyTask.id}`,
-        `run: node dist/cli.js task run ${readyTask.id} --runtime opencode`
+        `run: xz task run ${readyTask.id} --runtime opencode`
       ])
     }
 
@@ -156,7 +156,7 @@ taskCommand
         task.title,
         `Scope: ${task.scopeSummary}`,
         `Depends: ${formatInlineList(task.dependsOnTaskIds.map((id) => shortenId(id)), { emptyText: "none" })}`,
-        `Run: node dist/cli.js task run ${task.id} --runtime opencode`
+        `Run: xz task run ${task.id} --runtime opencode`
       ])
       printIndentedList("Files", task.allowedFiles, { emptyText: "n/a" })
       if (task.relatedSymbols.length > 0) {
@@ -179,6 +179,7 @@ taskCommand
       `status: ${formatStatus(result.status)}`,
       `task id: ${result.taskId}`,
       `runtime: ${result.runtime}`,
+      `mode: ${formatStatus(result.mode)}`,
       `success: ${String(result.success)}`,
       `task status: ${formatStatus(result.taskStatus)}`,
       `patch id: ${result.patchId}`,
@@ -219,6 +220,31 @@ taskCommand
     printCard("Removed Worktree", renderPathTree(process.cwd(), result.removedWorktree))
   })
 
+taskCommand
+  .command("retry")
+  .description("Discard a patch worktree and rerun the task")
+  .argument("<patchId>", "Patch id")
+  .option("--runtime <runtime>", "Optional runtime override")
+  .action(async (patchId: string, options: { runtime?: RuntimeName }) => {
+    const result = await runTaskRetryCommand(process.cwd(), patchId, options.runtime)
+    printSection("Task Retry", [
+      `status: ${formatStatus(result.status)}`,
+      `previous patch id: ${result.previousPatchId}`,
+      `new patch id: ${result.patchId}`,
+      `task id: ${result.taskId}`,
+      `runtime: ${result.runtime}`,
+      `mode: ${formatStatus(result.mode)}`,
+      `task status: ${formatStatus(result.taskStatus)}`,
+      `patch status: ${formatStatus(result.patchStatus)}`,
+      `next step: ${result.nextStep}`
+    ])
+    printList(
+      "Execution Timeline",
+      result.timeline.map((step) => `${formatStatus(step.status)} ${step.label}: ${step.detail}`)
+    )
+    printCard("Worktree", renderPathTree(process.cwd(), result.worktreePath))
+  })
+
 program
   .command("verify")
   .description("Verify a patch")
@@ -229,6 +255,7 @@ program
       `status: ${formatStatus(result.status)}`,
       `patch id: ${result.patchId}`,
       `task id: ${result.taskId}`,
+      `runtime: ${result.runtimeName}`,
       `patch status: ${formatStatus(result.patchStatus)}`,
       `task status: ${formatStatus(result.taskStatus)}`,
       `goal: ${result.goal}`,
@@ -260,6 +287,7 @@ program
       ],
       { emptyText: "none" }
     )
+    printCard("Outcome", [result.nextStep])
   })
 
 program
@@ -303,6 +331,7 @@ program
       { emptyText: "none" }
     )
     printList("Next Actions", result.nextActions, { emptyText: "none" })
+    printCard("Outcome", result.nextActions)
   })
 
 program.hook("preAction", async (thisCommand, actionCommand) => {
@@ -330,13 +359,34 @@ main().catch((error) => {
   const resolvedError = toError(error)
 
   if (error instanceof XieZhiError) {
-    console.error(`${error.code}: ${error.message}`)
-    if (error.hint) {
-      console.error(`hint: ${error.hint}`)
-    }
+    printSection("Error", [
+      `code: ${error.code}`,
+      `message: ${error.message}`,
+      `hint: ${error.hint ?? defaultRecoveryHint(error.code)}`
+    ])
   } else {
     console.error(resolvedError.message)
   }
 
   process.exit(1)
 })
+
+function defaultRecoveryHint(code: XieZhiError["code"]) {
+  switch (code) {
+    case "CONFIG_NOT_FOUND":
+    case "PROJECT_NOT_INITIALIZED":
+      return "Run `xz init` in the repository root, then rerun the command."
+    case "GIT_ERROR":
+      return "Check that this directory is a git repo and the worktree path still exists."
+    case "CLI_USAGE_ERROR":
+      return "Run the corresponding `xz ... --help` command or inspect `xz task list` for valid ids."
+    case "DATABASE_ERROR":
+      return "Re-run `xz init` if the local metadata directory was deleted or partially created."
+    case "NOT_IMPLEMENTED":
+      return "Choose one of the currently available runtimes or defer this workflow."
+    case "CONFIG_INVALID":
+      return "Fix `.xiezhi/config.yaml` or regenerate it with `xz init`."
+    default:
+      return "Retry the command after checking the repository and XieZhi metadata state."
+  }
+}

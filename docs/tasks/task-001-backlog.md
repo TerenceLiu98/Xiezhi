@@ -6,7 +6,7 @@ The best path to the first real product loop is:
 
 1. Finish all `P0` items from Phase 0 to Phase 4 needed for `xz task run`.
 2. Then finish the minimum verification slice from Phase 5.
-3. Only after that, deepen Claude and Codex support and polish UX.
+3. Phase 6 is now the alpha bar. The next highest-leverage work is Phase 7 real runtime execution.
 
 ## Backlog Summary
 
@@ -57,13 +57,27 @@ The best path to the first real product loop is:
 | T055 | Warning and violation rule engine | 5 | P0 | done | T052,T053,T054 |
 | T056 | Review report renderer | 5 | P1 | done | T051,T055 |
 | T057 | Verification CLI formatter | 5 | P1 | done | T055 |
-| T060 | Fixture repo suite | 6 | P0 | todo | T043,T050,T055 |
-| T061 | End-to-end smoke tests | 6 | P0 | todo | T060 |
-| T062 | Multi-runtime compatibility notes | 6 | P1 | todo | T044,T045 |
-| T063 | CLI UX polish | 6 | P1 | todo | T056,T057 |
-| T064 | Failure recovery polish | 6 | P1 | todo | T016,T057 |
-| T065 | Alpha release checklist | 6 | P0 | todo | T061 |
-| T066 | Demo script and operator notes | 6 | P0 | todo | T065 |
+| T060 | Fixture repo suite | 6 | P0 | done | T043,T050,T055 |
+| T061 | End-to-end smoke tests | 6 | P0 | done | T060 |
+| T062 | Multi-runtime compatibility notes | 6 | P1 | done | T044,T045 |
+| T063 | CLI UX polish | 6 | P1 | done | T056,T057 |
+| T064 | Failure recovery polish | 6 | P1 | done | T016,T057 |
+| T065 | Alpha release checklist | 6 | P0 | done | T061 |
+| T066 | Demo script and operator notes | 6 | P0 | done | T065 |
+| T070 | OpenCode real execution bridge | 7 | P0 | done | T060,T043 |
+| T071 | Claude headless execution bridge | 7 | P0 | done | T060,T044 |
+| T072 | Codex noninteractive execution bridge | 7 | P0 | done | T060,T045 |
+| T073 | Runtime capability matrix | 7 | P1 | done | T070,T071,T072 |
+| T074 | File-edit and approval event capture | 7 | P0 | done | T070,T071,T072 |
+| T075 | Runtime-specific policy compiler | 7 | P1 | done | T041,T070,T071,T072 |
+| T076 | Integration test matrix | 7 | P0 | done | T070,T071,T072,T074 |
+| T080 | Onboarding and doctor flow | 8 | P0 | todo | T064,T065 |
+| T081 | Install and packaging path | 8 | P0 | todo | T065 |
+| T082 | CI alpha smoke workflow | 8 | P0 | todo | T061,T076 |
+| T083 | Exported review artifact | 8 | P1 | todo | T056,T057 |
+| T084 | Config profiles and presets | 8 | P1 | todo | T041,T065 |
+| T085 | Operator release notes | 8 | P1 | todo | T065,T066 |
+| T086 | External alpha feedback loop | 8 | P1 | todo | T065,T085 |
 
 ## First Build Slice
 
