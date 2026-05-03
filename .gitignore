@@ -1,8 +1,5 @@
 # Created by https://www.toptal.com/developers/gitignore/api/python,visualstudiocode
 # Edit at https://www.toptal.com/developers/gitignore?templates=python,visualstudiocode
-
-docs/
-
 ### Python ###
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -195,3 +192,11 @@ pyrightconfig.json
 .ionide
 
 # End of https://www.toptal.com/developers/gitignore/api/python,visualstudiocode
+
+### Node / XieZhi ###
+node_modules/
+.pnpm-store/
+dist/
+coverage/
+.xiezhi/
+*.tsbuildinfo
