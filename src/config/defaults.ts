@@ -1,6 +1,7 @@
 import path from "node:path"
 import { existsSync, readFileSync } from "node:fs"
 
+import { applyConfigPreset, type ConfigPresetName } from "./presets.js"
 import type { ProjectConfig } from "./schema.js"
 
 type PackageJsonScripts = {
@@ -23,14 +24,16 @@ export function detectPackageManager(cwd: string) {
   return "pnpm"
 }
 
-export function detectScripts(cwd: string) {
+export function detectScripts(cwd: string, packageManager = detectPackageManager(cwd)) {
   const packageJsonPath = path.join(cwd, "package.json")
+
+  const prefix = packageManager === "npm" ? "npm run" : packageManager
 
   if (!existsSync(packageJsonPath)) {
     return {
-      test: "pnpm test",
-      typecheck: "pnpm typecheck",
-      lint: "pnpm lint"
+      test: `${prefix} test`,
+      typecheck: `${prefix} typecheck`,
+      lint: `${prefix} lint`
     }
   }
 
@@ -38,16 +41,16 @@ export function detectScripts(cwd: string) {
   const scripts = packageJson.scripts ?? {}
 
   return {
-    test: scripts.test ? "pnpm test" : "pnpm test",
-    typecheck: scripts.typecheck ? "pnpm typecheck" : "pnpm typecheck",
-    lint: scripts.lint ? "pnpm lint" : "pnpm lint"
+    test: scripts.test ? `${prefix} test` : `${prefix} test`,
+    typecheck: scripts.typecheck ? `${prefix} typecheck` : `${prefix} typecheck`,
+    lint: scripts.lint ? `${prefix} lint` : `${prefix} lint`
   }
 }
 
-export function createDefaultConfig(cwd: string): ProjectConfig {
+export function createDefaultConfig(cwd: string, presetName?: ConfigPresetName): ProjectConfig {
   const projectName = path.basename(cwd)
   const packageManager = detectPackageManager(cwd)
-  const detectedScripts = detectScripts(cwd)
+  const detectedScripts = detectScripts(cwd, packageManager)
 
   const prefix = packageManager === "npm" ? "npm run" : packageManager
   const fallback = {
@@ -56,7 +59,8 @@ export function createDefaultConfig(cwd: string): ProjectConfig {
     lint: `${prefix} lint`
   }
 
-  return {
+  return applyConfigPreset(
+    {
     project: {
       name: projectName,
       language: "typescript"
@@ -73,5 +77,7 @@ export function createDefaultConfig(cwd: string): ProjectConfig {
       defaultWriteMode: "task_scope_only",
       denyCommands: ["git push", "git commit", "rm -rf *"]
     }
-  }
+    },
+    presetName
+  )
 }

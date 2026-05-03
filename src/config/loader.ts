@@ -5,6 +5,7 @@ import { XieZhiError } from "../core/errors.js"
 import { createDefaultConfig } from "./defaults.js"
 import { getConfigPath, getXieZhiDir } from "./paths.js"
 import { parseYamlConfig, stringifyYamlConfig } from "./parsers.js"
+import type { ConfigPresetName } from "./presets.js"
 import { projectConfigSchema, type ProjectConfig } from "./schema.js"
 
 export async function ensureXieZhiDir(cwd: string) {
@@ -40,8 +41,8 @@ export async function writeProjectConfig(cwd: string, config: ProjectConfig) {
   await writeFile(configPath, source, "utf8")
 }
 
-export async function initializeDefaultConfig(cwd: string) {
-  const config = createDefaultConfig(cwd)
+export async function initializeDefaultConfig(cwd: string, presetName?: ConfigPresetName) {
+  const config = createDefaultConfig(cwd, presetName)
   await writeProjectConfig(cwd, config)
   return config
 }

@@ -4,6 +4,7 @@ import path from "node:path"
 import Database from "better-sqlite3"
 import { describe, expect, it } from "vitest"
 
+import { loadProjectConfig } from "../src/config/loader.js"
 import { getConfigPath, getDatabasePath, getXieZhiDir } from "../src/config/paths.js"
 import { runInit } from "../src/commands/init.js"
 import { createTempGitRepo } from "./support/git-fixture.js"
@@ -31,5 +32,16 @@ describe("init command", () => {
     expect(tables.some((table) => table.name === "features")).toBe(true)
     expect(tables.some((table) => table.name === "repositories")).toBe(true)
     expect(tables.some((table) => table.name === "__xiezhi_migrations")).toBe(true)
+  })
+
+  it("applies the requested config preset during init", async () => {
+    const cwd = await createTempGitRepo("xiezhi-init-preset-")
+
+    const result = await runInit(cwd, { preset: "local-fast" })
+    const config = await loadProjectConfig(cwd)
+
+    expect(result.preset).toBe("local-fast")
+    expect(config.runtime.default).toBe("claude")
+    expect(config.policy.denyCommands).toEqual(["git push", "git commit", "rm -rf *"])
   })
 })

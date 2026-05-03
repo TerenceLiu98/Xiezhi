@@ -1,5 +1,7 @@
 # Phase 8: Release Workflow
 
+Status: `done`
+
 ## Goal
 
 Make XieZhi repeatable for external alpha users instead of only for the primary development repo.
@@ -19,12 +21,15 @@ Make XieZhi repeatable for external alpha users instead of only for the primary 
 - CI smoke workflow
 - exported review artifact format
 - operator onboarding checklist
+- config presets
+- release-note and feedback templates
 
 ## Acceptance Criteria
 
 - A new developer can install XieZhi and finish the alpha demo without source spelunking
 - CI can enforce the alpha loop on a fixture repo
 - Review results can be shared outside the terminal
+- A maintainer can package, diagnose, demo, and collect alpha feedback from written docs alone
 
 ## Dependencies
 

@@ -124,6 +124,17 @@ The alpha smoke path covers:
 - `rejected` verification
 - discard / retry operator recovery
 
+## Install
+
+```bash
+pnpm install
+pnpm build
+pnpm link --global
+xz doctor
+```
+
+More detailed install and preset guidance lives in [docs/install.md](/Users/terenceliu/Downloads/development/xiezhi/docs/install.md:1).
+
 ## Roadmap Focus
 
 The immediate goal is to prove a tight v1 loop:

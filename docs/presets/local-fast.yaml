@@ -1,0 +1,15 @@
+project:
+  name: your-repo
+  language: typescript
+runtime:
+  default: claude
+commands:
+  test: pnpm test
+  typecheck: pnpm typecheck
+  lint: pnpm lint
+policy:
+  defaultWriteMode: task_scope_only
+  denyCommands:
+    - git push
+    - git commit
+    - rm -rf *

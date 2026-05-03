@@ -71,13 +71,13 @@ The best path to the first real product loop is:
 | T074 | File-edit and approval event capture | 7 | P0 | done | T070,T071,T072 |
 | T075 | Runtime-specific policy compiler | 7 | P1 | done | T041,T070,T071,T072 |
 | T076 | Integration test matrix | 7 | P0 | done | T070,T071,T072,T074 |
-| T080 | Onboarding and doctor flow | 8 | P0 | todo | T064,T065 |
-| T081 | Install and packaging path | 8 | P0 | todo | T065 |
-| T082 | CI alpha smoke workflow | 8 | P0 | todo | T061,T076 |
-| T083 | Exported review artifact | 8 | P1 | todo | T056,T057 |
-| T084 | Config profiles and presets | 8 | P1 | todo | T041,T065 |
-| T085 | Operator release notes | 8 | P1 | todo | T065,T066 |
-| T086 | External alpha feedback loop | 8 | P1 | todo | T065,T085 |
+| T080 | Onboarding and doctor flow | 8 | P0 | done | T064,T065 |
+| T081 | Install and packaging path | 8 | P0 | done | T065 |
+| T082 | CI alpha smoke workflow | 8 | P0 | done | T061,T076 |
+| T083 | Exported review artifact | 8 | P1 | done | T056,T057 |
+| T084 | Config profiles and presets | 8 | P1 | done | T041,T065 |
+| T085 | Operator release notes | 8 | P1 | done | T065,T066 |
+| T086 | External alpha feedback loop | 8 | P1 | done | T065,T085 |
 
 ## First Build Slice
 

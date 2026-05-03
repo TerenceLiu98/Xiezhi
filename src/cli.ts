@@ -3,6 +3,7 @@
 import { Command } from "commander"
 
 import { runDagShowCommand } from "./commands/dag.js"
+import { runDoctorCommand } from "./commands/doctor.js"
 import { runIndexCommand } from "./commands/index.js"
 import { runInit } from "./commands/init.js"
 import { runPlanCommand } from "./commands/plan.js"
@@ -34,13 +35,15 @@ program
 program
   .command("init")
   .description("Initialize XieZhi in the current repository")
-  .action(async () => {
-    const result = await runInit(process.cwd())
+  .option("--preset <preset>", "Config preset to apply during initialization")
+  .action(async (options: { preset?: "local-fast" | "ci-guarded" }) => {
+    const result = await runInit(process.cwd(), { preset: options.preset })
     printSection("Initialized XieZhi", [
       `metadata dir: ${result.metadataDir}`,
       `config path: ${result.configPath}`,
       `database path: ${result.databasePath}`,
       `package manager: ${result.packageManager}`,
+      `preset: ${result.preset}`,
       `created config: ${String(result.createdConfig)}`,
       `applied migrations: ${result.appliedMigrations.length}`,
       `repo id: ${result.repository.id}`,
@@ -48,6 +51,27 @@ program
       `head commit: ${result.repository.headCommit}`,
       `dirty: ${String(result.repository.isDirty)}`
     ])
+  })
+
+program
+  .command("doctor")
+  .description("Check whether XieZhi is ready to run in the current repository")
+  .action(async () => {
+    const result = await runDoctorCommand(process.cwd())
+    printSection("Doctor", [
+      `status: ${formatStatus(result.status)}`,
+      `cwd: ${result.cwd}`,
+      `metadata dir: ${result.metadataDir}`,
+      `config path: ${result.configPath}`,
+      `database path: ${result.databasePath}`,
+      `package manager: ${result.packageManager}`
+    ])
+    for (const check of result.checks) {
+      printCard(`${check.title} · ${formatStatus(check.status)}`, [
+        check.summary,
+        ...(check.nextStep ? [`next: ${check.nextStep}`] : [])
+      ])
+    }
   })
 
 program
@@ -294,8 +318,13 @@ program
   .command("review")
   .description("Review a patch")
   .argument("<patchId>", "Patch id")
-  .action(async (patchId: string) => {
-    const result = await runReviewCommand(process.cwd(), patchId)
+  .option("--format <format>", "Optional export format: text, json, markdown", "text")
+  .option("--output <path>", "Optional output path for exported review artifacts")
+  .action(async (patchId: string, options: { format?: "text" | "json" | "markdown"; output?: string }) => {
+    const result = await runReviewCommand(process.cwd(), patchId, {
+      format: options.format === "markdown" ? "markdown" : options.format,
+      outputPath: options.output
+    })
     printSection("Review", [
       `status: ${formatStatus(result.status)}`,
       `patch id: ${result.patchId}`,
@@ -332,10 +361,13 @@ program
     )
     printList("Next Actions", result.nextActions, { emptyText: "none" })
     printCard("Outcome", result.nextActions)
+    if ("export" in result && result.export) {
+      printCard("Export", [`format: ${result.export.format}`, `path: ${result.export.outputPath}`])
+    }
   })
 
 program.hook("preAction", async (thisCommand, actionCommand) => {
-  if (actionCommand.name() === "init") {
+  if (actionCommand.name() === "init" || actionCommand.name() === "doctor") {
     return
   }
 

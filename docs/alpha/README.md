@@ -7,6 +7,8 @@ This directory contains the operator-facing material for the current `v1 alpha`.
 - [release-checklist.md](/Users/terenceliu/Downloads/development/xiezhi/docs/alpha/release-checklist.md:1)
 - [runtime-compatibility.md](/Users/terenceliu/Downloads/development/xiezhi/docs/alpha/runtime-compatibility.md:1)
 - [demo-script.md](/Users/terenceliu/Downloads/development/xiezhi/docs/alpha/demo-script.md:1)
+- [release-notes-template.md](/Users/terenceliu/Downloads/development/xiezhi/docs/alpha/release-notes-template.md:1)
+- [feedback-loop.md](/Users/terenceliu/Downloads/development/xiezhi/docs/alpha/feedback-loop.md:1)
 
 ## Current Alpha Shape
 

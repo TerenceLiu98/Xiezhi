@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "description": "Controlled vibe coding platform for AI-assisted software development.",
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "packageManager": "pnpm@10.11.0",
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -20,6 +24,7 @@
   "scripts": {
     "build": "tsup src/cli.ts --format esm --dts --target node22 --clean --out-dir dist",
     "dev": "tsx src/cli.ts",
+    "prepack": "pnpm build",
     "smoke:alpha": "vitest run test/alpha-smoke.test.ts",
     "test": "vitest run",
     "test:watch": "vitest",
