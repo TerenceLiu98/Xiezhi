@@ -3,6 +3,7 @@
 import { Command } from "commander"
 
 import {
+  runAgentBuildCommand,
   runAgentFeedbackCommand,
   runAgentPlanCommand,
   runAgentReadyCommand,
@@ -157,6 +158,71 @@ agentCommand
     }
   })
 
+agentCommand
+  .command("build")
+  .description("Harness the main agent through DAG/AST/evidence until the build completes or needs a decision")
+  .argument("<goal>", "Natural-language build goal")
+  .option("--runtime <runtime>", "Runtime to use", "opencode")
+  .option("--parallel <count>", "Maximum parallel ready tasks per wave", "2")
+  .option("--decision-runtime <runtime>", "Runtime for warning promotion decisions", "opencode")
+  .option("--max-waves <count>", "Maximum ready waves to execute", "20")
+  .option("--assume-defaults", "Automatically select agent-recommended/default decision options")
+  .option("--dry-run-plan", "Only run agent intake and import the plan or decision evidence")
+  .action(
+    async (
+      goal: string,
+      options: {
+        runtime: RuntimeName
+        parallel: string
+        decisionRuntime: RuntimeName
+        maxWaves: string
+        assumeDefaults?: boolean
+        dryRunPlan?: boolean
+      }
+    ) => {
+      const result = await runAgentBuildCommand(process.cwd(), {
+        goal,
+        runtime: options.runtime,
+        parallel: Number.parseInt(options.parallel, 10) || 2,
+        decisionRuntime: options.decisionRuntime,
+        maxWaves: Number.parseInt(options.maxWaves, 10) || 20,
+        assumeDefaults: Boolean(options.assumeDefaults),
+        dryRunPlan: Boolean(options.dryRunPlan)
+      })
+      printSection("Agent Build", [
+        `status: ${formatStatus(result.status)}`,
+        `goal: ${result.goal}`,
+        `agent session: ${result.agentSessionId}`,
+        `feature: ${result.featureId ?? "none"}`,
+        `runtime: ${result.runtimeName}`,
+        `decision runtime: ${result.decisionRuntimeName}`,
+        `dry run: ${String(result.dryRun)}`,
+        `waves: ${result.waves.length}`,
+        `next action: ${result.nextAction}`
+      ])
+      printList(
+        "Decision Points",
+        result.decisionPoints.map((point) => `${point.problem} · recommended ${point.recommendedOptionId}`),
+        { emptyText: "none" }
+      )
+      printList(
+        "Resolved Decisions",
+        result.resolvedDecisions.map((decision) => `${decision.decisionPoint.problem}: ${decision.selectedOptionId}`),
+        { emptyText: "none" }
+      )
+      printList(
+        "Problem Reports",
+        result.problemReports.map((report) => `${report.problem} · solution: ${report.proposedSolution}`),
+        { emptyText: "none" }
+      )
+      printList(
+        "Waves",
+        result.waves.map((wave, index) => `wave ${index + 1}: runs ${wave.runs.length}, next ready ${wave.nextReadyTaskIds.length}`),
+        { emptyText: "none" }
+      )
+    }
+  )
+
 const agentSessionCommand = agentCommand.command("session").description("Inspect agent sessions")
 
 agentSessionCommand
@@ -201,6 +267,31 @@ agentSessionCommand
     printList(
       "Promotion Decisions",
       result.promotionDecisions.map((decision) => `${decision.agentRunId}: ${decision.summary}`),
+      { emptyText: "none" }
+    )
+    printList(
+      "Decision Points",
+      result.decisionPoints.map((decision) => `${decision.agentRunId}: ${decision.summary}`),
+      { emptyText: "none" }
+    )
+    printList(
+      "Resolved Decisions",
+      result.resolvedDecisions.map((decision) => `${decision.agentRunId}: ${decision.summary}`),
+      { emptyText: "none" }
+    )
+    printList(
+      "Problem Reports",
+      result.problemReports.map((report) => `${report.agentRunId}: ${report.summary}`),
+      { emptyText: "none" }
+    )
+    printList(
+      "Proposed Solutions",
+      result.proposedSolutions.map((solution) => `${solution.agentRunId}: ${solution.summary}`),
+      { emptyText: "none" }
+    )
+    printList(
+      "Build Events",
+      result.buildEvents.map((event) => `${event.type}: ${event.summary}`),
       { emptyText: "none" }
     )
   })

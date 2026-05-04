@@ -113,6 +113,11 @@ export type AgentSessionShowResult = {
     blockingViolations: number
   }>
   promotionDecisions: Array<{ agentRunId: string; summary: string; metadata: unknown }>
+  decisionPoints: Array<{ agentRunId: string; summary: string; metadata: unknown }>
+  resolvedDecisions: Array<{ agentRunId: string; summary: string; metadata: unknown }>
+  problemReports: Array<{ agentRunId: string; summary: string; metadata: unknown }>
+  proposedSolutions: Array<{ agentRunId: string; summary: string; metadata: unknown }>
+  buildEvents: Array<{ agentRunId: string; type: string; summary: string; metadata: unknown }>
   nextAction: string
 }
 
@@ -239,6 +244,21 @@ export class AgentObservabilityService {
       promotionDecisions: events
         .filter((event) => event.type === "promotion_decision")
         .map((event) => ({ agentRunId: event.agentRunId, summary: event.summary, metadata: safeJsonParse<unknown>(event.metadataJson, null) })),
+      decisionPoints: events
+        .filter((event) => event.type === "decision_point_declared")
+        .map((event) => ({ agentRunId: event.agentRunId, summary: event.summary, metadata: safeJsonParse<unknown>(event.metadataJson, null) })),
+      resolvedDecisions: events
+        .filter((event) => event.type === "decision_point_resolved")
+        .map((event) => ({ agentRunId: event.agentRunId, summary: event.summary, metadata: safeJsonParse<unknown>(event.metadataJson, null) })),
+      problemReports: events
+        .filter((event) => event.type === "agent_problem_reported")
+        .map((event) => ({ agentRunId: event.agentRunId, summary: event.summary, metadata: safeJsonParse<unknown>(event.metadataJson, null) })),
+      proposedSolutions: events
+        .filter((event) => event.type === "agent_solution_proposed")
+        .map((event) => ({ agentRunId: event.agentRunId, summary: event.summary, metadata: safeJsonParse<unknown>(event.metadataJson, null) })),
+      buildEvents: events
+        .filter((event) => event.type === "build_wave_started" || event.type === "build_wave_completed")
+        .map((event) => ({ agentRunId: event.agentRunId, type: event.type, summary: event.summary, metadata: safeJsonParse<unknown>(event.metadataJson, null) })),
       nextAction: ready?.nextAction ?? "Session has no imported feature yet.",
     }
   }

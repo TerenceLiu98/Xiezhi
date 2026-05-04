@@ -47,6 +47,18 @@ From `demo/notetaking`:
 
 ```text
 node ../../dist/cli.js init
+node ../../dist/cli.js agent build "build an Electron note-taking app with local notes, search, tags, and a polished editor" --runtime opencode --parallel 2 --decision-runtime opencode
+node ../../dist/cli.js agent session show
+npm test
+npm run build
+```
+
+`agent build` is the preferred user-level flow. The main agent can make reasonable assumptions, expose a structured decision point, or report a problem with a proposed solution. XieZhi records those declarations and then executes only through DAG/AST/patch evidence.
+
+For debugging the loop one step at a time:
+
+```text
+node ../../dist/cli.js init
 node ../../dist/cli.js agent plan "build an Electron note-taking app with local notes, search, tags, and a polished editor" --runtime opencode
 node ../../dist/cli.js dag show
 node ../../dist/cli.js task list

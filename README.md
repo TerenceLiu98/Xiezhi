@@ -34,7 +34,8 @@ XieZhi sits between an agent's plan and an AI coding runtime:
 
 ```text
 User Goal
-  -> AgentPlan JSON
+  -> Agent Intake
+  -> AgentPlan JSON / DecisionPoint / ProblemReport
   -> Feature DAG
   -> Task DAG
   -> Intent IR
@@ -57,6 +58,7 @@ Every meaningful code change should be tied to a task, scoped to allowed files o
 The first version is intentionally CLI-first and local-first.
 
 - A CLI for importing agent plans, running scoped tasks, verifying patches, and reviewing evidence
+- `xiezhi agent build` for natural-language goals where the main agent owns assumptions, decision points, and solution proposals
 - Feature DAG and Task DAG generation from strict AgentPlan JSON
 - Intent IR and task-scoped execution policy
 - Repository indexing for TypeScript, JavaScript, and Python projects
@@ -100,6 +102,14 @@ For a greenfield app idea, the agent still writes the plan; XieZhi only validate
 
 ```bash
 xiezhi init
+xiezhi agent build "build a 番茄钟" --runtime opencode --parallel 2
+```
+
+`agent build` is the ordinary user entrypoint. The main agent may return an AgentPlan and continue automatically, or declare a structured DecisionPoint when a user choice is required. XieZhi records that decision evidence and only executes bounded DAG/AST/patch operations.
+
+For lower-level inspection, the same flow can be driven step by step:
+
+```bash
 xiezhi agent plan "build a bookkeeping app" --runtime opencode
 xiezhi dag show
 xiezhi task list

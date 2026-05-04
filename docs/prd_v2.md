@@ -18,6 +18,14 @@ XieZhi is **not** trying to replace Claude Code, Codex, Cursor, OpenCode, Copilo
 
 The main agent coordinates the work and emits structured plans. XieZhi validates those plans into DAGs, task contracts, and Intent IR. Subagents execute individual tasks. AST analysis verifies what the agents actually changed.
 
+The ordinary user entrypoint is:
+
+```bash
+xiezhi agent build "<goal>" --runtime opencode
+```
+
+This command is a harness loop. The main agent may emit an AgentPlan, an AgentDecisionPoint, or a ProblemReport. XieZhi validates and records those structures, then executes only through ready queues, assignment contracts, patch verification, review, and promotion safety.
+
 ---
 
 ## 2. Problem Statement
@@ -55,7 +63,7 @@ XieZhi aims to solve this by turning agent plans into task graphs, giving subage
 
 XieZhi is:
 
-- A main-agent orchestration runtime.
+- A DAG/AST/evidence harness for a main coding agent.
 - A task graph system for coding agents.
 - A multi-language AST-aware patch verification layer.
 - A control plane for subagent execution.
@@ -118,14 +126,14 @@ The workflow should not be rigidly hardcoded. The main agent should be able to d
 - Generate a feature DAG.
 - Generate a task DAG.
 - Spawn subagents.
-
-The MVP starts with TypeScript, TSX, JavaScript, JSX, and Python semantic adapters. Unsupported languages must be shown as file-scope evidence rather than fake AST certainty.
 - Split a task.
 - Retry a failed task.
 - Ask the user for a decision.
 - Accept or reject a patch.
 
 XieZhi should support those decisions with durable DAG state, AST evidence, task contracts, and verification results. It should not replace the main agent with fixed orchestration heuristics.
+
+The MVP starts with TypeScript, TSX, JavaScript, JSX, and Python semantic adapters. Unsupported languages must be shown as file-scope evidence rather than fake AST certainty.
 
 ### 6.2 Enforce Hard Boundaries with Tools
 
