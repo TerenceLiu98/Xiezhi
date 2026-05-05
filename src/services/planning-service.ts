@@ -155,6 +155,9 @@ function buildIntent(plan: AgentPlanV1, task: AgentPlanTask): IntentIr {
     acceptance: task.acceptance,
     recommendedCommands: task.checks,
     expectedOutputs: task.expectedOutputs,
+    subagentRole: task.subagentRole,
+    parallelGroup: task.parallelGroup,
+    handoff: task.handoff,
     rationale: task.rationale.length > 0 ? task.rationale : [`Imported from agent plan for: ${plan.goal}`]
   })
 }
@@ -247,7 +250,10 @@ export class PlanningService {
           agentTaskKey: task.key,
           dependsOnTaskIds: dependencyTaskIds,
           scopeSummary: scopeSummary(task),
-          acceptance: task.acceptance
+          acceptance: task.acceptance,
+          subagentRole: task.subagentRole,
+          parallelGroup: task.parallelGroup,
+          handoff: task.handoff
         }),
         createdAt,
         updatedAt: createdAt
@@ -398,7 +404,10 @@ export class PlanningService {
             order: 999,
             dependsOnTaskIds: [],
             scopeSummary: "unknown scope",
-            acceptance: []
+            acceptance: [],
+            subagentRole: "implementation",
+            parallelGroup: null,
+            handoff: []
           })
         )
         const intent = safeJsonParse<IntentIr | null>(taskRow.intentIrJson, null)

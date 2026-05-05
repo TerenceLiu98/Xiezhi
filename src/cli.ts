@@ -29,6 +29,7 @@ import { runVerifyCommand } from "./commands/verify.js"
 import { loadProjectConfig } from "./config/loader.js"
 import { XieZhiError, toError } from "./core/errors.js"
 import { UNBORN_HEAD } from "./core/git.js"
+import { startGraphUiServer } from "./services/graph-ui-server.js"
 import {
   formatInlineList,
   formatStatus,
@@ -41,6 +42,18 @@ import {
   shortenId
 } from "./core/command-output.js"
 import type { RuntimeName } from "./runtime/shared/index.js"
+
+function waitForInterrupt() {
+  return new Promise<void>((resolve) => {
+    const done = () => {
+      process.off("SIGINT", done)
+      process.off("SIGTERM", done)
+      resolve()
+    }
+    process.once("SIGINT", done)
+    process.once("SIGTERM", done)
+  })
+}
 
 const program = new Command()
 
@@ -168,6 +181,9 @@ agentCommand
   .option("--max-waves <count>", "Maximum ready waves to execute", "20")
   .option("--assume-defaults", "Automatically select agent-recommended/default decision options")
   .option("--dry-run-plan", "Only run agent intake and import the plan or decision evidence")
+  .option("--ui", "Open the local graph harness UI while the build runs")
+  .option("--port <port>", "Port for --ui graph server", "4317")
+  .option("--no-open", "Do not open the browser for --ui")
   .action(
     async (
       goal: string,
@@ -178,48 +194,75 @@ agentCommand
         maxWaves: string
         assumeDefaults?: boolean
         dryRunPlan?: boolean
+        ui?: boolean
+        port: string
+        open?: boolean
       }
     ) => {
-      const result = await runAgentBuildCommand(process.cwd(), {
-        goal,
-        runtime: options.runtime,
-        parallel: Number.parseInt(options.parallel, 10) || 2,
-        decisionRuntime: options.decisionRuntime,
-        maxWaves: Number.parseInt(options.maxWaves, 10) || 20,
-        assumeDefaults: Boolean(options.assumeDefaults),
-        dryRunPlan: Boolean(options.dryRunPlan)
-      })
-      printSection("Agent Build", [
-        `status: ${formatStatus(result.status)}`,
-        `goal: ${result.goal}`,
-        `agent session: ${result.agentSessionId}`,
-        `feature: ${result.featureId ?? "none"}`,
-        `runtime: ${result.runtimeName}`,
-        `decision runtime: ${result.decisionRuntimeName}`,
-        `dry run: ${String(result.dryRun)}`,
-        `waves: ${result.waves.length}`,
-        `next action: ${result.nextAction}`
-      ])
-      printList(
-        "Decision Points",
-        result.decisionPoints.map((point) => `${point.problem} · recommended ${point.recommendedOptionId}`),
-        { emptyText: "none" }
-      )
-      printList(
-        "Resolved Decisions",
-        result.resolvedDecisions.map((decision) => `${decision.decisionPoint.problem}: ${decision.selectedOptionId}`),
-        { emptyText: "none" }
-      )
-      printList(
-        "Problem Reports",
-        result.problemReports.map((report) => `${report.problem} · solution: ${report.proposedSolution}`),
-        { emptyText: "none" }
-      )
-      printList(
-        "Waves",
-        result.waves.map((wave, index) => `wave ${index + 1}: runs ${wave.runs.length}, next ready ${wave.nextReadyTaskIds.length}`),
-        { emptyText: "none" }
-      )
+      const uiServer = options.ui
+        ? await startGraphUiServer({
+            cwd: process.cwd(),
+            port: Number.isNaN(Number.parseInt(options.port, 10)) ? 4317 : Number.parseInt(options.port, 10),
+            openBrowser: options.open !== false,
+            runtime: options.runtime,
+            decisionRuntime: options.decisionRuntime,
+            parallel: Number.parseInt(options.parallel, 10) || 2
+          })
+        : null
+      if (uiServer) {
+        printCard("Graph UI", [`url: ${uiServer.url}`, "Decision points will appear in the browser."])
+      }
+      try {
+        const result = await runAgentBuildCommand(process.cwd(), {
+          goal,
+          runtime: options.runtime,
+          parallel: Number.parseInt(options.parallel, 10) || 2,
+          decisionRuntime: options.decisionRuntime,
+          maxWaves: Number.parseInt(options.maxWaves, 10) || 20,
+          assumeDefaults: Boolean(options.assumeDefaults),
+          dryRunPlan: Boolean(options.dryRunPlan),
+          decisionResolver: uiServer?.resolveDecision
+        })
+        printSection("Agent Build", [
+          `status: ${formatStatus(result.status)}`,
+          `goal: ${result.goal}`,
+          `agent session: ${result.agentSessionId}`,
+          `feature: ${result.featureId ?? "none"}`,
+          `runtime: ${result.runtimeName}`,
+          `decision runtime: ${result.decisionRuntimeName}`,
+          `dry run: ${String(result.dryRun)}`,
+          `waves: ${result.waves.length}`,
+          `next action: ${result.nextAction}`
+        ])
+        printList(
+          "Decision Points",
+          result.decisionPoints.map((point) => `${point.problem} · recommended ${point.recommendedOptionId}`),
+          { emptyText: "none" }
+        )
+        printList(
+          "Resolved Decisions",
+          result.resolvedDecisions.map((decision) => `${decision.decisionPoint.problem}: ${decision.selectedOptionId}`),
+          { emptyText: "none" }
+        )
+        printList(
+          "Problem Reports",
+          result.problemReports.map((report) => `${report.problem} · solution: ${report.proposedSolution}`),
+          { emptyText: "none" }
+        )
+        printList(
+          "Waves",
+          result.waves.map((wave, index) => `wave ${index + 1}: runs ${wave.runs.length}, next ready ${wave.nextReadyTaskIds.length}`),
+          { emptyText: "none" }
+        )
+        if (uiServer) {
+          printCard("Graph UI", [`still running: ${uiServer.url}`, "Use the web UI for recovery/feedback actions, then press Ctrl-C here to stop the server."])
+          await waitForInterrupt()
+        }
+      } finally {
+        if (uiServer) {
+          await uiServer.close()
+        }
+      }
     }
   )
 
@@ -509,6 +552,9 @@ taskCommand
     ])
     printCard("Intent", [
       result.summary || "No summary recorded.",
+      `subagent role: ${result.subagentRole}`,
+      `parallel group: ${result.parallelGroup ?? "none"}`,
+      ...(result.handoff.length > 0 ? [`handoff: ${result.handoff.join(" | ")}`] : []),
       ...(result.rationale.length > 0 ? [`rationale: ${result.rationale.join(" | ")}`] : []),
       ...(result.expectedOutputs.length > 0 ? [`expected: ${result.expectedOutputs.join(" | ")}`] : [])
     ])

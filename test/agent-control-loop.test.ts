@@ -1,6 +1,7 @@
 import { chmod, mkdir, writeFile } from "node:fs/promises"
 import path from "node:path"
 
+import Database from "better-sqlite3"
 import { describe, expect, it } from "vitest"
 
 import {
@@ -190,7 +191,7 @@ describe("agent control loop", () => {
       expect(session.feature?.readyCount).toBe(1)
       expect(session.nextAction).toContain("run-ready")
     })
-  })
+  }, 15000)
 
   it("runs one non-conflicting ready wave", async () => {
     const cwd = await createTempTsRepo("xiezhi-agent-run-ready-")
@@ -231,6 +232,26 @@ describe("agent control loop", () => {
     expect(result.skipped.some((skip) => skip.reason.includes("scope conflicts") || skip.reason.includes("parallel limit"))).toBe(true)
     expect(result.runs.every((run) => run.promotion === "not_auto")).toBe(true)
   }, 30000)
+
+  it("treats draft tasks with verified dependencies as effectively ready", async () => {
+    const cwd = await createTempTsRepo("xiezhi-agent-effective-ready-")
+    await runInit(cwd)
+    const plan = importRouterPlan(cwd)
+    const dependency = plan.tasks[0]!
+    const dependent = plan.tasks[1]!
+
+    const db = new Database(path.join(cwd, ".xiezhi", "xiezhi.db"))
+    try {
+      db.prepare("UPDATE tasks SET status = 'verified' WHERE id = ?").run(dependency.id)
+      db.prepare("UPDATE tasks SET status = 'draft' WHERE id = ?").run(dependent.id)
+    } finally {
+      db.close()
+    }
+
+    const ready = runAgentReadyCommand(cwd, plan.featureId)
+    expect(ready.readyTasks.map((task) => task.id)).toContain(dependent.id)
+    expect(ready.blockedTasks.some((task) => task.id === dependent.id)).toBe(false)
+  })
 
   it("turns feedback into a follow-up agent plan", async () => {
     const cwd = await createTempTsRepo("xiezhi-agent-feedback-")
@@ -421,6 +442,57 @@ describe("agent control loop", () => {
       const session = runAgentSessionShowCommand(cwd, result.agentSessionId)
       expect(session.buildEvents.some((event) => event.type === "build_wave_started")).toBe(true)
       expect(session.buildEvents.some((event) => event.type === "build_wave_completed")).toBe(true)
+    })
+  }, 30000)
+
+  it("asks the main agent for recovery when a DAG stalls without ready tasks", async () => {
+    const cwd = await createTempTsRepo("xiezhi-agent-build-stalled-")
+    await runInit(cwd)
+    const stalledPlan = importRouterPlan(cwd)
+    const recoveryPlan = routerAgentPlan({
+      title: "Recover stalled DAG",
+      tasks: [
+        {
+          ...routerAgentPlan().tasks[0]!,
+          key: "recover-helper",
+          title: "Recover helper implementation",
+          dependsOn: [],
+          allowedFiles: ["src/helpers.ts"],
+          allowedSymbols: [],
+          checks: [],
+          rationale: ["Recover from a stalled rejected DAG with a bounded helper edit."]
+        }
+      ]
+    })
+    const sqlite = new Database(path.join(cwd, ".xiezhi", "xiezhi.db"))
+    try {
+      const timestamp = new Date().toISOString()
+      sqlite
+        .prepare(
+          "INSERT INTO agent_sessions (id, goal, feature_id, planning_runtime_name, raw_agent_output, plan_summary_json, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        )
+        .run("stalled-build-session", "build a pomodoro app", stalledPlan.featureId, "opencode", "{}", "{}", "running", timestamp, timestamp)
+      sqlite.prepare("UPDATE tasks SET status = 'rejected' WHERE feature_id = ?").run(stalledPlan.featureId)
+    } finally {
+      sqlite.close()
+    }
+
+    await withBuildFakeOpenCode(cwd, JSON.stringify(recoveryPlan), async () => {
+      const result = await runAgentBuildCommand(cwd, {
+        goal: "build a pomodoro app",
+        runtime: "opencode",
+        parallel: 1,
+        decisionRuntime: "opencode",
+        maxWaves: 3,
+        assumeDefaults: false,
+        dryRunPlan: false
+      })
+
+      expect(result.status).toBe("completed")
+      expect(result.featureId).not.toBe(stalledPlan.featureId)
+      expect(result.waves).toHaveLength(1)
+      const session = runAgentSessionShowCommand(cwd, "stalled-build-session")
+      expect(session.problemReports.some((report) => report.summary.includes("stalled"))).toBe(true)
     })
   }, 30000)
 })

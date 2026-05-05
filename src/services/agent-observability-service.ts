@@ -127,17 +127,20 @@ export class AgentObservabilityService {
   ready(featureId?: string): ReadyQueueResult {
     const plan = getPlanView(this.cwd, featureId)
     const taskById = new Map(plan.tasks.map((task) => [task.id, task]))
-    const readyBase = plan.tasks.filter((task) => {
-      if (task.status !== "ready") return false
+    const dependencySatisfied = (task: (typeof plan.tasks)[number]) => {
       return task.dependsOnTaskIds.every((dependencyId) => {
         const dependency = taskById.get(dependencyId)
         return dependency && ["verified", "promoted"].includes(dependency.status)
       })
+    }
+    const readyBase = plan.tasks.filter((task) => {
+      if (task.status === "ready") return dependencySatisfied(task)
+      return task.status === "draft" && dependencySatisfied(task)
     })
     const readyTasks = readyBase.map((task) => ({
       id: task.id,
       title: task.title,
-      status: task.status,
+      status: "ready",
       allowedFiles: task.allowedFiles,
       dependsOnTaskIds: task.dependsOnTaskIds,
       canRunWith: readyBase
@@ -145,7 +148,7 @@ export class AgentObservabilityService {
         .map((candidate) => candidate.id)
     }))
     const blockedTasks = plan.tasks
-      .filter((task) => task.status === "draft")
+      .filter((task) => task.status === "draft" && !dependencySatisfied(task))
       .map((task) => ({
         id: task.id,
         title: task.title,

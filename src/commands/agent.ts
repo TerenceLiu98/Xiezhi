@@ -1,5 +1,5 @@
 import type { RuntimeName } from "../runtime/shared/index.js"
-import { runAgentBuild, runAgentFeedback, runAgentPlan, runAgentReadyTasks, runAgentTask } from "../services/agent-service.js"
+import { runAgentBuild, runAgentFeedback, runAgentPlan, runAgentReadyTasks, runAgentTask, type AgentDecisionResolver } from "../services/agent-service.js"
 import { getReadyQueue, showAgentSession } from "../services/agent-observability-service.js"
 
 export async function runAgentPlanCommand(cwd: string, goal: string, runtime: RuntimeName) {
@@ -39,6 +39,7 @@ export async function runAgentBuildCommand(
     maxWaves: number
     assumeDefaults: boolean
     dryRunPlan: boolean
+    decisionResolver?: AgentDecisionResolver
   }
 ) {
   return runAgentBuild(cwd, input)

@@ -106,4 +106,45 @@ describe("agent plan import", () => {
       )
     ).toThrow(XieZhiError)
   }, 15000)
+
+  it("persists subagent orchestration metadata from AgentPlan tasks", async () => {
+    const cwd = await createTempTsRepo("xiezhi-agent-plan-subagent-")
+    await runInit(cwd)
+
+    const plan = importAgentPlan(
+      cwd,
+      routerAgentPlan({
+        tasks: [
+          {
+            ...routerAgentPlan().tasks[0]!,
+            subagentRole: "implementation",
+            parallelGroup: "ui-wave",
+            handoff: ["Use the route contract from the planning agent."]
+          }
+        ]
+      }),
+      { runtimeName: "test-agent" }
+    )
+
+    const sqlite = openDatabaseConnection(cwd)
+    try {
+      const task = sqlite
+        .prepare(
+          "SELECT t.intent_ir_json, n.metadata_json FROM tasks t JOIN dag_nodes n ON n.id = t.dag_node_id WHERE t.id = ?"
+        )
+        .get(plan.tasks[0]!.id) as { intent_ir_json: string; metadata_json: string }
+      expect(JSON.parse(task.intent_ir_json)).toMatchObject({
+        subagentRole: "implementation",
+        parallelGroup: "ui-wave",
+        handoff: ["Use the route contract from the planning agent."]
+      })
+      expect(JSON.parse(task.metadata_json)).toMatchObject({
+        subagentRole: "implementation",
+        parallelGroup: "ui-wave",
+        handoff: ["Use the route contract from the planning agent."]
+      })
+    } finally {
+      sqlite.close()
+    }
+  }, 15000)
 })

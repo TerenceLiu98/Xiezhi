@@ -48,7 +48,10 @@ export const intentIrV2Schema = intentIrV1Schema.extend({
   version: z.literal("v2"),
   allowedSymbols: z.array(z.string()).default([]),
   forbiddenSymbols: z.array(z.string()).default([]),
-  expectedOutputs: z.array(z.string()).default([])
+  expectedOutputs: z.array(z.string()).default([]),
+  subagentRole: z.string().min(1).default("implementation"),
+  parallelGroup: z.string().min(1).nullable().default(null),
+  handoff: z.array(z.string()).default([])
 })
 export const intentIrSchema = z.union([intentIrV1Schema, intentIrV2Schema])
 export type IntentIr = z.infer<typeof intentIrSchema>
@@ -65,6 +68,9 @@ export const agentPlanTaskSchema = z.object({
   acceptance: z.array(z.string()).min(1),
   checks: z.array(z.string()).default([]),
   expectedOutputs: z.array(z.string()).default([]),
+  subagentRole: z.string().min(1).default("implementation"),
+  parallelGroup: z.string().min(1).nullable().default(null),
+  handoff: z.array(z.string()).default([]),
   rationale: z.array(z.string()).default([])
 })
 export type AgentPlanTask = z.infer<typeof agentPlanTaskSchema>
@@ -102,6 +108,27 @@ export function getIntentExpectedOutputs(intent: IntentIr | null) {
   return intent.expectedOutputs
 }
 
+export function getIntentSubagentRole(intent: IntentIr | null) {
+  if (!intent || intent.version !== "v2") {
+    return "implementation"
+  }
+  return intent.subagentRole
+}
+
+export function getIntentParallelGroup(intent: IntentIr | null) {
+  if (!intent || intent.version !== "v2") {
+    return null
+  }
+  return intent.parallelGroup
+}
+
+export function getIntentHandoff(intent: IntentIr | null) {
+  if (!intent || intent.version !== "v2") {
+    return []
+  }
+  return intent.handoff
+}
+
 export const plannedDagNodeSchema = z.object({
   id: z.string(),
   featureId: z.string(),
@@ -128,7 +155,10 @@ export const taskMetadataSchema = z.object({
   order: z.number().int().positive(),
   dependsOnTaskIds: z.array(z.string()),
   scopeSummary: z.string(),
-  acceptance: z.array(z.string())
+  acceptance: z.array(z.string()),
+  subagentRole: z.string().min(1).default("implementation"),
+  parallelGroup: z.string().min(1).nullable().default(null),
+  handoff: z.array(z.string()).default([])
 })
 export type TaskMetadata = z.infer<typeof taskMetadataSchema>
 

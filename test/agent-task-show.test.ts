@@ -69,6 +69,9 @@ describe("agent run and task show", () => {
       expect(JSON.parse(assignment!.contract_json)).toMatchObject({
         taskId: agentRun.taskId,
         goal: expect.any(String),
+        subagentRole: "implementation",
+        parallelGroup: null,
+        handoff: [],
         allowedFiles: expect.any(Array),
         acceptance: expect.any(Array),
         expectedOutputs: expect.any(Array),

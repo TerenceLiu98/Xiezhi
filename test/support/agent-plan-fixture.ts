@@ -20,6 +20,9 @@ export function routerAgentPlan(overrides?: Partial<AgentPlanV1>): AgentPlanV1 {
         acceptance: ["Router behavior is updated without touching unrelated files."],
         checks: ["pnpm typecheck"],
         expectedOutputs: ["A task-scoped patch is captured."],
+        subagentRole: "implementation",
+        parallelGroup: null,
+        handoff: [],
         rationale: ["Agent selected the router and helper files as the bounded implementation surface."]
       },
       {
@@ -34,6 +37,9 @@ export function routerAgentPlan(overrides?: Partial<AgentPlanV1>): AgentPlanV1 {
         acceptance: ["Coverage exists for the router flow."],
         checks: ["pnpm typecheck", "pnpm test"],
         expectedOutputs: ["Passing typecheck and test evidence is recorded."],
+        subagentRole: "test",
+        parallelGroup: null,
+        handoff: ["Use the implemented router behavior from implement-router."],
         rationale: ["Agent selected the existing router test as the verification surface."]
       }
     ],
@@ -60,6 +66,9 @@ export function appBootstrapAgentPlan(overrides?: Partial<AgentPlanV1>): AgentPl
         acceptance: ["The app has a minimal package and source entry."],
         checks: [],
         expectedOutputs: ["Tracked and untracked app files are captured."],
+        subagentRole: "implementation",
+        parallelGroup: null,
+        handoff: [],
         rationale: ["Agent selected the starter files needed for a small app scaffold."]
       },
       {
@@ -74,6 +83,9 @@ export function appBootstrapAgentPlan(overrides?: Partial<AgentPlanV1>): AgentPl
         acceptance: ["Tests can be added for the app scaffold."],
         checks: ["pnpm typecheck", "pnpm test"],
         expectedOutputs: ["Verification evidence is captured."],
+        subagentRole: "test",
+        parallelGroup: null,
+        handoff: ["Use the scaffolded Electron app files from scaffold-app."],
         rationale: ["Agent selected tests and config as the verification surface."]
       }
     ],
@@ -100,6 +112,9 @@ export function noteTakingAgentPlan(overrides?: Partial<AgentPlanV1>): AgentPlan
         acceptance: ["Notes can be searched and filtered by tag."],
         checks: ["pnpm typecheck", "pnpm test"],
         expectedOutputs: ["A bounded patch implements search and tags."],
+        subagentRole: "implementation",
+        parallelGroup: null,
+        handoff: [],
         rationale: ["Agent selected the existing note domain and app files."]
       }
     ],

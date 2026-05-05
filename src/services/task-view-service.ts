@@ -18,6 +18,9 @@ import {
   getIntentAllowedSymbols,
   getIntentExpectedOutputs,
   getIntentForbiddenSymbols,
+  getIntentHandoff,
+  getIntentParallelGroup,
+  getIntentSubagentRole,
   type IntentIr
 } from "../planning/types.js"
 import type { PatchRuntimeEvidence } from "./patch-record-service.js"
@@ -67,6 +70,9 @@ export type TaskShowResult = {
   relatedSymbols: string[]
   allowedSymbols: string[]
   forbiddenSymbols: string[]
+  subagentRole: string
+  parallelGroup: string | null
+  handoff: string[]
   acceptance: string[]
   recommendedCommands: string[]
   expectedOutputs: string[]
@@ -190,6 +196,9 @@ export class TaskViewService {
       relatedSymbols: intent?.relatedSymbols ?? [],
       allowedSymbols: getIntentAllowedSymbols(intent),
       forbiddenSymbols: getIntentForbiddenSymbols(intent),
+      subagentRole: getIntentSubagentRole(intent),
+      parallelGroup: getIntentParallelGroup(intent),
+      handoff: getIntentHandoff(intent),
       acceptance: intent?.acceptance ?? [],
       recommendedCommands: intent?.recommendedCommands ?? [],
       expectedOutputs: getIntentExpectedOutputs(intent),

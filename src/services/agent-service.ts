@@ -15,6 +15,9 @@ import {
   getIntentAllowedSymbols,
   getIntentExpectedOutputs,
   getIntentForbiddenSymbols,
+  getIntentHandoff,
+  getIntentParallelGroup,
+  getIntentSubagentRole,
   type AgentPlanV1,
   type IntentIr
 } from "../planning/types.js"
@@ -119,10 +122,16 @@ function buildAgentPlanPrompt(goal: string) {
     '      "acceptance": ["string"],',
     '      "checks": ["package-manager command"],',
     '      "expectedOutputs": ["string"],',
+    '      "subagentRole": "implementation|test|design|integration|review",',
+    '      "parallelGroup": "optional wave/group label or null",',
+    '      "handoff": ["context this subagent needs from prior tasks"],',
     '      "rationale": ["string"]',
     "    }",
     "  ]",
     "}",
+    "Plan for OpenCode subagents: each task is a bounded assignment for a subagent, not a vague step for one main agent.",
+    "Use independent allowedFiles and parallelGroup labels so XieZhi can show safe ready waves and scope conflicts.",
+    "Put architecture/design/test/integration ownership in subagentRole and handoff.",
     "XieZhi will enforce allowedFiles and AST/symbol scope, so keep scopes explicit and bounded.",
     `Goal: ${goal}`
   ].join("\n")
@@ -159,6 +168,9 @@ function buildAgentBuildIntakePrompt(input: {
     '      "acceptance": ["string"],',
     '      "checks": ["package-manager command"],',
     '      "expectedOutputs": ["string"],',
+    '      "subagentRole": "implementation|test|design|integration|review",',
+    '      "parallelGroup": "optional wave/group label or null",',
+    '      "handoff": ["context this subagent needs from prior tasks"],',
     '      "rationale": ["string"]',
     "    }",
     "  ]",
@@ -168,7 +180,12 @@ function buildAgentBuildIntakePrompt(input: {
     '{"version":"v1","type":"decision_point","goal":"string","problem":"string","impact":"string","recommendedOptionId":"string","options":[{"id":"string","label":"string","tradeoff":"string","planDelta":"string"}],"defaultIfUnanswered":"string"}',
     "Return ProblemReport v1 when you found a blocker or important issue and are proposing a solution:",
     '{"version":"v1","type":"problem_report","problem":"string","evidence":["string"],"proposedSolution":"string","requiresUserDecision":false}',
-    "For short goals, choose practical defaults, record assumptions in AgentPlan requirements, and explain them in task rationale.",
+    "For greenfield app goals or ambiguous product goals, first declare AgentDecisionPoint v1 for user-facing architecture/design choices such as platform, app shell, persistence strategy, visual style, notification behavior, and testing approach unless those decisions are already resolved.",
+    "Declare one DecisionPoint at a time in priority order. Do not hide architecture or design choices as silent assumptions when they materially affect the app.",
+    "For short goals, choose practical defaults only after exposing important decision points, record assumptions in AgentPlan requirements, and explain them in task rationale.",
+    "Plan as a supervisor agent: use the DAG and AST/scope evidence to split work into subagent-sized tasks.",
+    "Do not make the main agent own all implementation. Assign clear subagentRole values, parallelGroup labels, and handoff notes.",
+    "Prefer parallel-ready tasks only when allowedFiles do not overlap. Use dependencies when one subagent needs another subagent's output.",
     "Make task scope explicit and bounded because XieZhi will enforce file and symbol scope.",
     `Goal: ${input.goal}`,
     input.resolvedDecisions && input.resolvedDecisions.length > 0
@@ -218,6 +235,9 @@ export type AssignmentContract = {
   taskId: string
   goal: string
   summary: string
+  subagentRole: string
+  parallelGroup: string | null
+  handoff: string[]
   allowedFiles: string[]
   forbiddenFiles: string[]
   allowedSymbols: string[]
@@ -329,6 +349,11 @@ export type AgentBuildResult = {
   problemReports: ProblemReportV1[]
   nextAction: string
 }
+
+export type AgentDecisionResolver = (input: {
+  agentSessionId: string
+  decisionPoint: AgentDecisionPointV1
+}) => Promise<string>
 
 type AgentBuildIntakeResult =
   | { type: "plan"; plan: AgentPlanV1 }
@@ -554,6 +579,9 @@ export class AgentService {
       taskId: input.taskId,
       goal: input.intent.goal,
       summary: input.intent.summary,
+      subagentRole: getIntentSubagentRole(input.intent),
+      parallelGroup: getIntentParallelGroup(input.intent),
+      handoff: getIntentHandoff(input.intent),
       allowedFiles: compiledPolicy.policy.allowedFiles,
       forbiddenFiles: compiledPolicy.policy.forbiddenFiles,
       allowedSymbols: getIntentAllowedSymbols(input.intent),
@@ -1017,10 +1045,12 @@ export class AgentService {
       maxWaves: number
       assumeDefaults: boolean
       dryRunPlan: boolean
+      decisionResolver?: AgentDecisionResolver
     }
   ): Promise<AgentBuildResult> {
     const reusableSession = input.dryRunPlan ? null : this.findReusableBuildSession(input.goal)
     const agentSessionId = reusableSession?.id ?? this.createAgentSession({ goal: input.goal, runtime: input.runtime })
+    this.db.update(agentSessionsTable).set({ status: "running", updatedAt: nowIso() }).where(eq(agentSessionsTable.id, agentSessionId)).run()
     const decisionPoints: AgentDecisionPointV1[] = []
     const resolvedDecisions: AgentBuildResult["resolvedDecisions"] = []
     const problemReports: ProblemReportV1[] = []
@@ -1119,7 +1149,7 @@ export class AgentService {
           summary: intake.decisionPoint.problem,
           metadata: intake.decisionPoint
         })
-        if (!input.assumeDefaults) {
+        if (!input.assumeDefaults && !input.decisionResolver) {
           this.db
             .update(agentSessionsTable)
             .set({ status: "waiting_for_decision", updatedAt: nowIso() })
@@ -1140,7 +1170,23 @@ export class AgentService {
             nextAction: "Resolve the agent-declared decision point, or rerun with `--assume-defaults` to select the default option."
           }
         }
-        const selectedOptionId = intake.decisionPoint.defaultIfUnanswered || intake.decisionPoint.recommendedOptionId
+        if (input.decisionResolver) {
+          this.db
+            .update(agentSessionsTable)
+            .set({ status: "waiting_for_decision", updatedAt: nowIso() })
+            .where(eq(agentSessionsTable.id, agentSessionId))
+            .run()
+        }
+        const selectedOptionId = input.decisionResolver
+          ? await input.decisionResolver({ agentSessionId, decisionPoint: intake.decisionPoint })
+          : intake.decisionPoint.defaultIfUnanswered || intake.decisionPoint.recommendedOptionId
+        if (input.decisionResolver) {
+          this.db
+            .update(agentSessionsTable)
+            .set({ status: "running", updatedAt: nowIso() })
+            .where(eq(agentSessionsTable.id, agentSessionId))
+            .run()
+        }
         resolvedDecisions.push({ decisionPoint: intake.decisionPoint, selectedOptionId })
         this.recordSessionEvent({
           agentSessionId,
@@ -1242,6 +1288,166 @@ export class AgentService {
       const ready = getReadyQueue(cwd, featureId)
       if (ready.readyTasks.length === 0) {
         const completed = ready.blockedTasks.length === 0 && ready.skippedTasks.length === 0
+        if (!completed) {
+          const evidenceSummary = {
+            reason: "The build DAG has no ready tasks but still has blocked or skipped work.",
+            currentFeatureId: featureId,
+            ready,
+            instruction:
+              "Solve this automatically as the main agent. Return a recovery AgentPlan v1 with bounded tasks, an AgentDecisionPoint v1 if user choice is required, or a ProblemReport v1 if impossible."
+          }
+          this.recordSessionEvent({
+            agentSessionId,
+            runtime: input.runtime,
+            type: "agent_problem_reported",
+            summary: "Build DAG stalled without ready tasks.",
+            metadata: evidenceSummary
+          })
+          this.recordSessionEvent({
+            agentSessionId,
+            runtime: input.runtime,
+            type: "agent_solution_proposed",
+            summary: "Requesting an automatic recovery plan from the main agent.",
+            metadata: evidenceSummary
+          })
+
+          let recoveryRepair: { previousRawOutput: string; error: string; attempt: number } | undefined
+          let recovered = false
+          for (let recoveryAttempt = 0; recoveryAttempt < 3; recoveryAttempt += 1) {
+            this.db.update(agentSessionsTable).set({ status: "running", updatedAt: nowIso() }).where(eq(agentSessionsTable.id, agentSessionId)).run()
+            const recoveryRuntimeResult = await this.callAgentRuntime(
+              cwd,
+              input.runtime,
+              buildAgentBuildIntakePrompt({
+                goal: input.goal,
+                resolvedDecisions,
+                evidenceSummary,
+                schemaRepair: recoveryRepair
+              })
+            )
+            this.db
+              .update(agentSessionsTable)
+              .set({ rawAgentOutput: recoveryRuntimeResult.rawOutput, updatedAt: nowIso() })
+              .where(eq(agentSessionsTable.id, agentSessionId))
+              .run()
+
+            if (recoveryRuntimeResult.exitCode !== 0) {
+              break
+            }
+
+            let recoveryIntake: AgentBuildIntakeResult
+            try {
+              recoveryIntake = parseAgentBuildIntake(recoveryRuntimeResult.rawOutput)
+            } catch (error) {
+              const message = error instanceof Error ? error.message : String(error)
+              recoveryRepair = {
+                previousRawOutput: recoveryRuntimeResult.rawOutput,
+                error: message,
+                attempt: (recoveryRepair?.attempt ?? 0) + 1
+              }
+              this.recordSessionEvent({
+                agentSessionId,
+                runtime: input.runtime,
+                type: "agent_problem_reported",
+                summary: "Stalled-DAG recovery output failed schema validation.",
+                metadata: { error: message, rawOutput: recoveryRuntimeResult.rawOutput.slice(-2000), recoveryAttempt }
+              })
+              continue
+            }
+
+            if (recoveryIntake.type === "plan") {
+              const imported = this.importBuildPlan({
+                cwd,
+                agentSessionId,
+                runtime: input.runtime,
+                rawOutput: recoveryRuntimeResult.rawOutput,
+                plan: recoveryIntake.plan
+              })
+              featureId = imported.featureId
+              recovered = true
+              break
+            }
+
+            if (recoveryIntake.type === "decision_point") {
+              decisionPoints.push(recoveryIntake.decisionPoint)
+              this.recordSessionEvent({
+                agentSessionId,
+                runtime: input.runtime,
+                type: "decision_point_declared",
+                summary: recoveryIntake.decisionPoint.problem,
+                metadata: recoveryIntake.decisionPoint
+              })
+              if (input.assumeDefaults || input.decisionResolver) {
+                if (input.decisionResolver) {
+                  this.db
+                    .update(agentSessionsTable)
+                    .set({ status: "waiting_for_decision", updatedAt: nowIso() })
+                    .where(eq(agentSessionsTable.id, agentSessionId))
+                    .run()
+                }
+                const selectedOptionId = input.decisionResolver
+                  ? await input.decisionResolver({ agentSessionId, decisionPoint: recoveryIntake.decisionPoint })
+                  : recoveryIntake.decisionPoint.defaultIfUnanswered || recoveryIntake.decisionPoint.recommendedOptionId
+                if (input.decisionResolver) {
+                  this.db
+                    .update(agentSessionsTable)
+                    .set({ status: "running", updatedAt: nowIso() })
+                    .where(eq(agentSessionsTable.id, agentSessionId))
+                    .run()
+                }
+                resolvedDecisions.push({ decisionPoint: recoveryIntake.decisionPoint, selectedOptionId })
+                this.recordSessionEvent({
+                  agentSessionId,
+                  runtime: input.runtime,
+                  type: "decision_point_resolved",
+                  summary: `Selected ${selectedOptionId} for: ${recoveryIntake.decisionPoint.problem}`,
+                  metadata: { decisionPoint: recoveryIntake.decisionPoint, selectedOptionId, mode: input.decisionResolver ? "ui" : "assume_defaults" }
+                })
+                continue
+              }
+              this.db
+                .update(agentSessionsTable)
+                .set({ status: "waiting_for_decision", updatedAt: nowIso() })
+                .where(eq(agentSessionsTable.id, agentSessionId))
+                .run()
+              return {
+                status: "waiting_for_decision",
+                goal: input.goal,
+                runtimeName: input.runtime,
+                decisionRuntimeName: input.decisionRuntime,
+                agentSessionId,
+                featureId,
+                dryRun: false,
+                waves,
+                decisionPoints,
+                resolvedDecisions,
+                problemReports,
+                nextAction: "Resolve the agent-declared decision point to continue."
+              }
+            }
+
+            problemReports.push(recoveryIntake.problemReport)
+            this.recordSessionEvent({
+              agentSessionId,
+              runtime: input.runtime,
+              type: "agent_problem_reported",
+              summary: recoveryIntake.problemReport.problem,
+              metadata: recoveryIntake.problemReport
+            })
+            this.recordSessionEvent({
+              agentSessionId,
+              runtime: input.runtime,
+              type: "agent_solution_proposed",
+              summary: recoveryIntake.problemReport.proposedSolution,
+              metadata: recoveryIntake.problemReport
+            })
+            break
+          }
+
+          if (recovered) {
+            continue
+          }
+        }
         this.db
           .update(agentSessionsTable)
           .set({ status: completed ? "completed" : "stopped", updatedAt: nowIso() })
@@ -1259,7 +1465,7 @@ export class AgentService {
           decisionPoints,
           resolvedDecisions,
           problemReports,
-          nextAction: completed ? "Build DAG completed." : ready.nextAction
+          nextAction: completed ? "Build DAG completed." : "The build stalled and the main agent did not return a recovery plan."
         }
       }
 
@@ -1270,6 +1476,7 @@ export class AgentService {
         summary: `Build wave ${waveIndex + 1} started with ${ready.readyTasks.length} ready task(s).`,
         metadata: { wave: waveIndex + 1, readyTasks: ready.readyTasks }
       })
+      this.db.update(agentSessionsTable).set({ status: "running", updatedAt: nowIso() }).where(eq(agentSessionsTable.id, agentSessionId)).run()
       const wave = await this.runReady(cwd, {
         featureId,
         runtime: input.runtime,
@@ -1314,6 +1521,7 @@ export class AgentService {
         let recoveryRepair: { previousRawOutput: string; error: string; attempt: number } | undefined
         let recovered = false
         for (let recoveryAttempt = 0; recoveryAttempt < 3; recoveryAttempt += 1) {
+          this.db.update(agentSessionsTable).set({ status: "running", updatedAt: nowIso() }).where(eq(agentSessionsTable.id, agentSessionId)).run()
           const recoveryRuntimeResult = await this.callAgentRuntime(
             cwd,
             input.runtime,
@@ -1376,8 +1584,24 @@ export class AgentService {
               summary: recoveryIntake.decisionPoint.problem,
               metadata: recoveryIntake.decisionPoint
             })
-            if (input.assumeDefaults) {
-              const selectedOptionId = recoveryIntake.decisionPoint.defaultIfUnanswered || recoveryIntake.decisionPoint.recommendedOptionId
+            if (input.assumeDefaults || input.decisionResolver) {
+              if (input.decisionResolver) {
+                this.db
+                  .update(agentSessionsTable)
+                  .set({ status: "waiting_for_decision", updatedAt: nowIso() })
+                  .where(eq(agentSessionsTable.id, agentSessionId))
+                  .run()
+              }
+              const selectedOptionId = input.decisionResolver
+                ? await input.decisionResolver({ agentSessionId, decisionPoint: recoveryIntake.decisionPoint })
+                : recoveryIntake.decisionPoint.defaultIfUnanswered || recoveryIntake.decisionPoint.recommendedOptionId
+              if (input.decisionResolver) {
+                this.db
+                  .update(agentSessionsTable)
+                  .set({ status: "running", updatedAt: nowIso() })
+                  .where(eq(agentSessionsTable.id, agentSessionId))
+                  .run()
+              }
               resolvedDecisions.push({ decisionPoint: recoveryIntake.decisionPoint, selectedOptionId })
               this.recordSessionEvent({
                 agentSessionId,
@@ -1431,6 +1655,21 @@ export class AgentService {
           continue
         }
 
+        const readyAfterRecoveryAttempt = getReadyQueue(cwd, featureId)
+        if (readyAfterRecoveryAttempt.readyTasks.length > 0) {
+          this.recordSessionEvent({
+            agentSessionId,
+            runtime: input.runtime,
+            type: "agent_solution_proposed",
+            summary: "Continuing with existing ready tasks after recovery output failed.",
+            metadata: {
+              reason: "The main agent did not return a valid recovery plan, but the current DAG still has runnable work.",
+              readyTasks: readyAfterRecoveryAttempt.readyTasks
+            }
+          })
+          continue
+        }
+
         this.db.update(agentSessionsTable).set({ status: "stopped", updatedAt: nowIso() }).where(eq(agentSessionsTable.id, agentSessionId)).run()
         return {
           status: "stopped",
@@ -1468,7 +1707,7 @@ export class AgentService {
       }
     }
 
-    this.db.update(agentSessionsTable).set({ status: "running", updatedAt: nowIso() }).where(eq(agentSessionsTable.id, agentSessionId)).run()
+    this.db.update(agentSessionsTable).set({ status: "stopped", updatedAt: nowIso() }).where(eq(agentSessionsTable.id, agentSessionId)).run()
     return {
       status: "max_waves",
       goal: input.goal,
@@ -1543,6 +1782,7 @@ export async function runAgentBuild(
     maxWaves: number
     assumeDefaults: boolean
     dryRunPlan: boolean
+    decisionResolver?: AgentDecisionResolver
   }
 ) {
   const sqlite = openDatabaseConnection(cwd)
