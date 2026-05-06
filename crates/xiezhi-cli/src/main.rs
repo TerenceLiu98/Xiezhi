@@ -4,6 +4,8 @@ use xiezhi_core::{Event, EventActor, WorkItem, WorkRun};
 use xiezhi_store::Store;
 use xiezhi_workflow::load_workflow;
 
+const STATE_PATH: &str = ".xiezhi/state.sqlite";
+
 fn main() {
     let mut args = env::args().skip(1);
     match args.next().as_deref() {
@@ -17,7 +19,7 @@ fn main() {
                 std::process::exit(2);
             }
             let workflow = load_workflow("XIEZHI.md").ok();
-            let store = Store::open(".xiezhi/state.sqlite").unwrap_or_else(|error| {
+            let store = Store::open(STATE_PATH).unwrap_or_else(|error| {
                 eprintln!("failed to open local state store: {error}");
                 std::process::exit(1);
             });
@@ -75,13 +77,80 @@ fn main() {
                 println!("usage: xiezhi workflow check [path]");
             }
         },
+        Some("work") => match args.next().as_deref() {
+            Some("list") => {
+                let store = open_store_or_exit();
+                let runs = store.list_work_runs().unwrap_or_else(|error| {
+                    eprintln!("failed to list work runs: {error}");
+                    std::process::exit(1);
+                });
+                if runs.is_empty() {
+                    println!("no work runs");
+                    return;
+                }
+                for summary in runs {
+                    println!(
+                        "{}  {:?}  {}  events:{}",
+                        summary.run.id, summary.run.status, summary.item.title, summary.event_count
+                    );
+                }
+            }
+            Some("show") => {
+                let Some(id) = args.next() else {
+                    eprintln!("usage: xiezhi work show <run-id>");
+                    std::process::exit(2);
+                };
+                let run_id = uuid::Uuid::parse_str(&id).unwrap_or_else(|error| {
+                    eprintln!("invalid run id: {error}");
+                    std::process::exit(2);
+                });
+                let store = open_store_or_exit();
+                let Some(run) = store.get_work_run(run_id).unwrap_or_else(|error| {
+                    eprintln!("failed to load work run: {error}");
+                    std::process::exit(1);
+                }) else {
+                    eprintln!("work run not found: {run_id}");
+                    std::process::exit(1);
+                };
+                let events = store
+                    .list_events_for_work_run(run.id)
+                    .unwrap_or_else(|error| {
+                        eprintln!("failed to load work run events: {error}");
+                        std::process::exit(1);
+                    });
+                println!("work run: {}", run.id);
+                println!("goal: {}", run.goal);
+                println!("status: {:?}", run.status);
+                println!("events: {}", events.len());
+                for event in events {
+                    println!(
+                        "- {:?} {}: {}",
+                        event.actor, event.event_type, event.summary
+                    );
+                }
+            }
+            _ => {
+                println!("usage:");
+                println!("  xiezhi work list");
+                println!("  xiezhi work show <run-id>");
+            }
+        },
         _ => {
             println!("xiezhi orchestration framework");
             println!();
             println!("usage:");
             println!("  xiezhi run <goal>");
+            println!("  xiezhi work list");
+            println!("  xiezhi work show <run-id>");
             println!("  xiezhi workflow check [path]");
             println!("  xiezhi --version");
         }
     }
+}
+
+fn open_store_or_exit() -> Store {
+    Store::open(STATE_PATH).unwrap_or_else(|error| {
+        eprintln!("failed to open local state store: {error}");
+        std::process::exit(1);
+    })
 }
