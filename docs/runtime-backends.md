@@ -133,6 +133,16 @@ After graph normalization, XieZhi should materialize task nodes into agent works
 
 `xiezhi agent run <agent-run-id>` is the current agent execution skeleton. It runs the configured command inside the assigned agent workspace, writes `xiezhi-agent-assignment.md`, captures raw runtime output, marks the AgentRun completed or failed, and records a minimal ChangeSet from non-XieZhi files found in the workspace.
 
+`xiezhi work step <run-id>` is the current one-step orchestration driver. It chooses exactly one
+safe next action from durable state:
+
+- `SupervisorIntake` runs supervisor intake.
+- `WaitingForDecision` prints pending decision points and stops.
+- `Planning` dispatches missing latest-graph task nodes into agent workspaces.
+- `Planning` runs the next planned AgentRun once all latest-graph task nodes are materialized.
+
+It does not auto-resolve human governance decisions and it does not yet perform proof or promotion.
+
 ## Runtime Policy
 
 Runtime permissions are workspace-scoped by default.

@@ -48,6 +48,7 @@ Deliverables:
 - command log evidence
 - safe path policy
 - graph task node materialization into AgentWorkspace + AgentRun
+- one-step local orchestration driver for intake, dispatch, and planned agent execution
 
 ## Phase 3: Supervisor Runtime
 

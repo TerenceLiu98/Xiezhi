@@ -41,7 +41,12 @@ cargo run -p xiezhi-cli -- work intake <run-id>
 cargo run -p xiezhi-cli -- work decide <decision-id> <option-id>
 cargo run -p xiezhi-cli -- work dispatch <run-id>
 cargo run -p xiezhi-cli -- agent run <agent-run-id>
+cargo run -p xiezhi-cli -- work step <run-id>
 ```
+
+`work step` advances one safe orchestration step based on current state: supervisor intake,
+dispatching task nodes into agent workspaces, or running the next planned agent. It stops for
+human decision points instead of auto-selecting them.
 
 XieZhi should then:
 

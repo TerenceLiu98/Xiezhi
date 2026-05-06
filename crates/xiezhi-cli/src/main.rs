@@ -1,4 +1,4 @@
-use std::{env, fs, path::Path};
+use std::{collections::HashSet, env, fs, path::Path};
 
 use xiezhi_core::{
     AgentRole, AgentRun, AgentRunStatus, ChangeSet, ChangeSetStatus, DecisionOption, DecisionPoint,
@@ -313,6 +313,17 @@ fn main() {
                 });
                 dispatch_work_run_or_exit(run_id);
             }
+            Some("step") => {
+                let Some(id) = args.next() else {
+                    eprintln!("usage: xiezhi work step <run-id>");
+                    std::process::exit(2);
+                };
+                let run_id = uuid::Uuid::parse_str(&id).unwrap_or_else(|error| {
+                    eprintln!("invalid run id: {error}");
+                    std::process::exit(2);
+                });
+                step_work_run_or_exit(run_id);
+            }
             Some("show") => {
                 let Some(id) = args.next() else {
                     eprintln!("usage: xiezhi work show <run-id>");
@@ -461,6 +472,7 @@ fn main() {
                 println!("  xiezhi work intake <run-id>");
                 println!("  xiezhi work decide <decision-id> <option-id>");
                 println!("  xiezhi work dispatch <run-id>");
+                println!("  xiezhi work step <run-id>");
             }
         },
         Some("agent") => match args.next().as_deref() {
@@ -490,6 +502,7 @@ fn main() {
             println!("  xiezhi work intake <run-id>");
             println!("  xiezhi work decide <decision-id> <option-id>");
             println!("  xiezhi work dispatch <run-id>");
+            println!("  xiezhi work step <run-id>");
             println!("  xiezhi agent run <agent-run-id>");
             println!("  xiezhi workflow check [path]");
             println!("  xiezhi --version");
@@ -616,6 +629,107 @@ fn run_supervisor_intake_or_exit(run_id: uuid::Uuid) {
     println!("status: {:?}", run.status);
     println!("runtime exit: {:?}", output.exit_code);
     println!("structured events: {}", output.structured_events.len());
+}
+
+fn step_work_run_or_exit(run_id: uuid::Uuid) {
+    let store = open_store_or_exit();
+    let run = store
+        .get_work_run(run_id)
+        .unwrap_or_else(|error| {
+            eprintln!("failed to load work run: {error}");
+            std::process::exit(1);
+        })
+        .unwrap_or_else(|| {
+            eprintln!("work run not found: {run_id}");
+            std::process::exit(1);
+        });
+
+    match run.status {
+        WorkRunStatus::SupervisorIntake => {
+            println!("next action: supervisor intake");
+            run_supervisor_intake_or_exit(run.id);
+        }
+        WorkRunStatus::WaitingForDecision => {
+            let pending = store
+                .list_decision_points_for_work_run(run.id)
+                .unwrap_or_else(|error| {
+                    eprintln!("failed to list decision points: {error}");
+                    std::process::exit(1);
+                })
+                .into_iter()
+                .filter(|decision| decision.status == DecisionPointStatus::Pending)
+                .collect::<Vec<_>>();
+            println!("next action: waiting for decision");
+            for decision in pending {
+                println!(
+                    "- decision {} recommended:{} {}",
+                    decision.id, decision.recommended_option_id, decision.problem
+                );
+            }
+        }
+        WorkRunStatus::Planning => {
+            let graphs = store
+                .list_execution_graphs_for_work_run(run.id)
+                .unwrap_or_else(|error| {
+                    eprintln!("failed to load execution graphs: {error}");
+                    std::process::exit(1);
+                });
+            let graph = graphs
+                .iter()
+                .rev()
+                .find(|graph| graph.status == "draft")
+                .or_else(|| graphs.last())
+                .unwrap_or_else(|| {
+                    eprintln!(
+                        "planning run has no execution graph; run `xiezhi work intake {}` first",
+                        run.id
+                    );
+                    std::process::exit(2);
+                });
+            let task_node_ids = graph
+                .nodes
+                .iter()
+                .filter(|node| node.kind == GraphNodeKind::Task)
+                .map(|node| node.id)
+                .collect::<HashSet<_>>();
+            if task_node_ids.is_empty() {
+                eprintln!("execution graph {} has no task nodes", graph.id);
+                std::process::exit(2);
+            }
+            let agent_runs = store
+                .list_agent_runs_for_work_run(run.id)
+                .unwrap_or_else(|error| {
+                    eprintln!("failed to list agent runs: {error}");
+                    std::process::exit(1);
+                });
+            let materialized_task_node_ids = agent_runs
+                .iter()
+                .filter_map(|agent_run| agent_run.execution_graph_node_id)
+                .collect::<HashSet<_>>();
+            if task_node_ids
+                .iter()
+                .any(|task_node_id| !materialized_task_node_ids.contains(task_node_id))
+            {
+                println!("next action: dispatch");
+                dispatch_work_run_or_exit(run.id);
+                return;
+            }
+            if let Some(agent_run) = agent_runs
+                .iter()
+                .find(|agent_run| agent_run.status == AgentRunStatus::Planned)
+            {
+                println!("next action: agent run {}", agent_run.id);
+                run_agent_run_or_exit(agent_run.id);
+                return;
+            }
+            println!("next action: none");
+            println!("all latest graph task nodes are dispatched, with no planned agent run left");
+        }
+        _ => {
+            println!("next action: none");
+            println!("work run status: {:?}", run.status);
+        }
+    }
 }
 
 fn resolve_decision_or_exit(decision_id: uuid::Uuid, option_id: &str) {
