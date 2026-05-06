@@ -795,6 +795,9 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
+ "time",
+ "uuid",
+ "xiezhi-core",
  "xiezhi-workflow",
 ]
 

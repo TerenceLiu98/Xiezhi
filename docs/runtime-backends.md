@@ -101,6 +101,14 @@ The next backend step is to feed the intake prompt to the selected runtime, capt
 
 `xiezhi work intake <run-id>` is the current explicit command for that backend smoke path. It runs the configured command in the run workspace with the supervisor prompt on stdin, records raw stdout/stderr, and updates WorkRun state when a decision point or ready handoff is extracted.
 
+When intake extracts a `SupervisorHandoff v1` with `readyToNormalize=true`, XieZhi creates a draft `ExecutionGraph` from the handoff:
+
+- goal node
+- supervisor plan feature node
+- one task node per declared subagent plan
+
+This is intentionally minimal. The next layer should replace it with a stricter graph normalization pass that preserves dependencies, proof requirements, declared scope, and assignment metadata.
+
 ## Runtime Policy
 
 Runtime permissions are workspace-scoped by default.

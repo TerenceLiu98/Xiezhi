@@ -7,6 +7,11 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use time::OffsetDateTime;
+use uuid::Uuid;
+use xiezhi_core::{
+    ExecutionGraph, ExecutionGraphEdge, ExecutionGraphNode, GraphEdgeKind, GraphNodeKind,
+};
 use xiezhi_workflow::Workflow;
 
 #[derive(Debug, Error)]
@@ -278,6 +283,75 @@ pub fn extract_structured_events(source: &str) -> Vec<RuntimeStructuredEvent> {
         .collect()
 }
 
+pub fn execution_graph_from_supervisor_handoff(
+    work_run_id: Uuid,
+    handoff: &SupervisorHandoff,
+) -> ExecutionGraph {
+    let goal_node = ExecutionGraphNode {
+        id: Uuid::now_v7(),
+        kind: GraphNodeKind::Goal,
+        title: handoff.goal.clone(),
+        body: Some(handoff.summary.clone()),
+    };
+    let feature_node = ExecutionGraphNode {
+        id: Uuid::now_v7(),
+        kind: GraphNodeKind::Feature,
+        title: "Supervisor plan".to_string(),
+        body: Some(format!(
+            "Assumptions:\n{}\n\nResolved decisions:\n{}",
+            bullet_lines(&handoff.assumptions),
+            bullet_lines(&handoff.resolved_decisions),
+        )),
+    };
+    let mut nodes = vec![goal_node.clone(), feature_node.clone()];
+    let mut edges = vec![ExecutionGraphEdge {
+        from: goal_node.id,
+        to: feature_node.id,
+        kind: GraphEdgeKind::Contains,
+    }];
+
+    for subagent in &handoff.subagent_plan {
+        let task_node = ExecutionGraphNode {
+            id: Uuid::now_v7(),
+            kind: GraphNodeKind::Task,
+            title: format!("{}: {}", subagent.role, subagent.id),
+            body: Some(format!(
+                "{}\n\nSuggested scope:\n{}",
+                subagent.summary,
+                bullet_lines(&subagent.suggested_scope),
+            )),
+        };
+        edges.push(ExecutionGraphEdge {
+            from: feature_node.id,
+            to: task_node.id,
+            kind: GraphEdgeKind::Contains,
+        });
+        nodes.push(task_node);
+    }
+
+    ExecutionGraph {
+        id: Uuid::now_v7(),
+        work_run_id,
+        version: "v1".to_string(),
+        status: "draft".to_string(),
+        nodes,
+        edges,
+        created_at: OffsetDateTime::now_utc(),
+    }
+}
+
+fn bullet_lines(values: &[String]) -> String {
+    if values.is_empty() {
+        "- none".to_string()
+    } else {
+        values
+            .iter()
+            .map(|value| format!("- {value}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+}
+
 fn json_object_slices(source: &str) -> Vec<&str> {
     let mut slices = Vec::new();
     let mut depth = 0usize;
@@ -434,5 +508,36 @@ Continuing after decision.
 
         assert!(output.success());
         assert_eq!(output.stdout, "hello supervisor");
+    }
+
+    #[test]
+    fn converts_handoff_to_execution_graph() {
+        let handoff = SupervisorHandoff {
+            version: "v1".to_string(),
+            goal: "build".to_string(),
+            summary: "Ready.".to_string(),
+            assumptions: vec!["local app".to_string()],
+            resolved_decisions: vec!["desktop".to_string()],
+            subagent_plan: vec![SupervisorSubagentPlan {
+                id: "impl".to_string(),
+                role: "implementation".to_string(),
+                summary: "Build the app shell.".to_string(),
+                suggested_scope: vec!["src/".to_string()],
+            }],
+            normalization_instructions: vec!["Create DAG.".to_string()],
+            ready_to_normalize: true,
+        };
+
+        let graph = execution_graph_from_supervisor_handoff(Uuid::now_v7(), &handoff);
+
+        assert_eq!(graph.nodes.len(), 3);
+        assert_eq!(graph.edges.len(), 2);
+        assert!(graph.nodes.iter().any(|node| node.title == "build"));
+        assert!(
+            graph
+                .nodes
+                .iter()
+                .any(|node| node.title == "implementation: impl")
+        );
     }
 }

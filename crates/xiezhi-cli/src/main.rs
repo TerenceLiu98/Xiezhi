@@ -8,7 +8,8 @@ use xiezhi_core::{
 use xiezhi_hooks::HookRunner;
 use xiezhi_runtime::{
     RuntimeStructuredEvent, SupervisorIntakeInput, build_supervisor_intake_prompt,
-    run_supervisor_intake_command, write_supervisor_intake_prompt,
+    execution_graph_from_supervisor_handoff, run_supervisor_intake_command,
+    write_supervisor_intake_prompt,
 };
 use xiezhi_store::Store;
 use xiezhi_workflow::{AgentRuntimeKind, load_workflow};
@@ -286,6 +287,21 @@ fn main() {
                 });
                 run_supervisor_intake_or_exit(run_id);
             }
+            Some("decide") => {
+                let Some(decision_id) = args.next() else {
+                    eprintln!("usage: xiezhi work decide <decision-id> <option-id>");
+                    std::process::exit(2);
+                };
+                let Some(option_id) = args.next() else {
+                    eprintln!("usage: xiezhi work decide <decision-id> <option-id>");
+                    std::process::exit(2);
+                };
+                let decision_id = uuid::Uuid::parse_str(&decision_id).unwrap_or_else(|error| {
+                    eprintln!("invalid decision id: {error}");
+                    std::process::exit(2);
+                });
+                resolve_decision_or_exit(decision_id, &option_id);
+            }
             Some("show") => {
                 let Some(id) = args.next() else {
                     eprintln!("usage: xiezhi work show <run-id>");
@@ -339,8 +355,40 @@ fn main() {
                 println!("decision points: {}", decision_points.len());
                 for decision in decision_points {
                     println!(
-                        "- decision {:?} recommended:{} {}",
-                        decision.status, decision.recommended_option_id, decision.problem
+                        "- decision {} {:?} recommended:{} {}",
+                        decision.id,
+                        decision.status,
+                        decision.recommended_option_id,
+                        decision.problem
+                    );
+                    for option in decision.options {
+                        let selected =
+                            if decision.selected_option_id.as_deref() == Some(option.id.as_str()) {
+                                " selected"
+                            } else {
+                                ""
+                            };
+                        println!(
+                            "  - option {}{}: {} ({})",
+                            option.id, selected, option.label, option.tradeoff
+                        );
+                    }
+                }
+                let execution_graphs = store
+                    .list_execution_graphs_for_work_run(run.id)
+                    .unwrap_or_else(|error| {
+                        eprintln!("failed to load execution graphs: {error}");
+                        std::process::exit(1);
+                    });
+                println!("execution graphs: {}", execution_graphs.len());
+                for graph in execution_graphs {
+                    println!(
+                        "- graph {} {} status:{} nodes:{} edges:{}",
+                        graph.id,
+                        graph.version,
+                        graph.status,
+                        graph.nodes.len(),
+                        graph.edges.len()
                     );
                 }
                 println!("events: {}", events.len());
@@ -356,6 +404,7 @@ fn main() {
                 println!("  xiezhi work list");
                 println!("  xiezhi work show <run-id>");
                 println!("  xiezhi work intake <run-id>");
+                println!("  xiezhi work decide <decision-id> <option-id>");
             }
         },
         _ => {
@@ -366,6 +415,7 @@ fn main() {
             println!("  xiezhi work list");
             println!("  xiezhi work show <run-id>");
             println!("  xiezhi work intake <run-id>");
+            println!("  xiezhi work decide <decision-id> <option-id>");
             println!("  xiezhi workflow check [path]");
             println!("  xiezhi --version");
         }
@@ -493,6 +543,106 @@ fn run_supervisor_intake_or_exit(run_id: uuid::Uuid) {
     println!("structured events: {}", output.structured_events.len());
 }
 
+fn resolve_decision_or_exit(decision_id: uuid::Uuid, option_id: &str) {
+    let store = open_store_or_exit();
+    let Some(mut decision) = store
+        .get_decision_point(decision_id)
+        .unwrap_or_else(|error| {
+            eprintln!("failed to load decision point: {error}");
+            std::process::exit(1);
+        })
+    else {
+        eprintln!("decision point not found: {decision_id}");
+        std::process::exit(1);
+    };
+    if decision.status != DecisionPointStatus::Pending {
+        eprintln!("decision point is not pending: {:?}", decision.status);
+        std::process::exit(2);
+    }
+    let Some(selected_option) = decision
+        .options
+        .iter()
+        .find(|option| option.id == option_id)
+        .cloned()
+    else {
+        eprintln!("unknown option id: {option_id}");
+        eprintln!("available options:");
+        for option in decision.options {
+            eprintln!("  {} - {}", option.id, option.label);
+        }
+        std::process::exit(2);
+    };
+
+    decision.status = DecisionPointStatus::Resolved;
+    decision.selected_option_id = Some(selected_option.id.clone());
+    decision.resolved_at = Some(time::OffsetDateTime::now_utc());
+    store
+        .update_decision_point(&decision)
+        .unwrap_or_else(|error| {
+            eprintln!("failed to update decision point: {error}");
+            std::process::exit(1);
+        });
+    store
+        .insert_event(&Event {
+            id: uuid::Uuid::now_v7(),
+            work_run_id: decision.work_run_id,
+            actor: EventActor::User,
+            event_type: "decision_point_resolved".to_string(),
+            summary: format!(
+                "Selected option {} for decision: {}",
+                selected_option.id, decision.problem
+            ),
+            payload_json: Some(
+                serde_json::json!({
+                    "decision_point_id": decision.id,
+                    "selected_option": selected_option,
+                })
+                .to_string(),
+            ),
+            created_at: time::OffsetDateTime::now_utc(),
+        })
+        .unwrap_or_else(|error| {
+            eprintln!("failed to persist decision resolution event: {error}");
+            std::process::exit(1);
+        });
+
+    let mut run = store
+        .get_work_run(decision.work_run_id)
+        .unwrap_or_else(|error| {
+            eprintln!("failed to load work run: {error}");
+            std::process::exit(1);
+        })
+        .unwrap_or_else(|| {
+            eprintln!("work run not found: {}", decision.work_run_id);
+            std::process::exit(1);
+        });
+    let pending_count = store
+        .list_decision_points_for_work_run(run.id)
+        .unwrap_or_else(|error| {
+            eprintln!("failed to list decision points: {error}");
+            std::process::exit(1);
+        })
+        .into_iter()
+        .filter(|decision| decision.status == DecisionPointStatus::Pending)
+        .count();
+    if pending_count == 0 && run.status == WorkRunStatus::WaitingForDecision {
+        transition_work_run(&mut run, WorkRunStatus::Planning).unwrap_or_else(|error| {
+            eprintln!("failed to transition work run to planning: {error}");
+            std::process::exit(1);
+        });
+        store.update_work_run(&run).unwrap_or_else(|error| {
+            eprintln!("failed to update work run: {error}");
+            std::process::exit(1);
+        });
+    }
+
+    println!("decision point: {}", decision.id);
+    println!("selected option: {}", selected_option.id);
+    println!("work run: {}", run.id);
+    println!("status: {:?}", run.status);
+    println!("pending decisions: {pending_count}");
+}
+
 fn persist_structured_runtime_event_or_exit(
     store: &Store,
     run: &WorkRun,
@@ -568,6 +718,19 @@ fn persist_structured_runtime_event_or_exit(
                 });
         }
         RuntimeStructuredEvent::SupervisorHandoff(handoff) => {
+            let graph_id = if handoff.ready_to_normalize {
+                let graph = execution_graph_from_supervisor_handoff(run.id, handoff);
+                let graph_id = graph.id;
+                store
+                    .insert_execution_graph(&graph)
+                    .unwrap_or_else(|error| {
+                        eprintln!("failed to persist execution graph: {error}");
+                        std::process::exit(1);
+                    });
+                Some(graph_id)
+            } else {
+                None
+            };
             store
                 .insert_event(&Event {
                     id: uuid::Uuid::now_v7(),
@@ -575,16 +738,41 @@ fn persist_structured_runtime_event_or_exit(
                     actor: EventActor::SupervisorAgent,
                     event_type: "supervisor_handoff".to_string(),
                     summary: handoff.summary.clone(),
-                    payload_json: Some(serde_json::to_string(handoff).unwrap_or_else(|error| {
-                        eprintln!("failed to encode supervisor handoff: {error}");
-                        std::process::exit(1);
-                    })),
+                    payload_json: Some(
+                        serde_json::json!({
+                            "handoff": handoff,
+                            "execution_graph_id": graph_id,
+                        })
+                        .to_string(),
+                    ),
                     created_at: time::OffsetDateTime::now_utc(),
                 })
                 .unwrap_or_else(|error| {
                     eprintln!("failed to persist supervisor handoff event: {error}");
                     std::process::exit(1);
                 });
+            if let Some(graph_id) = graph_id {
+                store
+                    .insert_event(&Event {
+                        id: uuid::Uuid::now_v7(),
+                        work_run_id: run.id,
+                        actor: EventActor::XieZhi,
+                        event_type: "execution_graph_created".to_string(),
+                        summary: "Created draft execution graph from supervisor handoff."
+                            .to_string(),
+                        payload_json: Some(
+                            serde_json::json!({
+                                "execution_graph_id": graph_id,
+                            })
+                            .to_string(),
+                        ),
+                        created_at: time::OffsetDateTime::now_utc(),
+                    })
+                    .unwrap_or_else(|error| {
+                        eprintln!("failed to persist execution graph event: {error}");
+                        std::process::exit(1);
+                    });
+            }
         }
     }
 }

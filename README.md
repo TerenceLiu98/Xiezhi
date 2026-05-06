@@ -38,6 +38,7 @@ Useful inspection commands:
 cargo run -p xiezhi-cli -- work list
 cargo run -p xiezhi-cli -- work show <run-id>
 cargo run -p xiezhi-cli -- work intake <run-id>
+cargo run -p xiezhi-cli -- work decide <decision-id> <option-id>
 ```
 
 XieZhi should then:

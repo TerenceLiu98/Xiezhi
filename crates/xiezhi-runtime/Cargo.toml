@@ -9,4 +9,7 @@ repository.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+time.workspace = true
+uuid.workspace = true
+xiezhi-core.workspace = true
 xiezhi-workflow.workspace = true

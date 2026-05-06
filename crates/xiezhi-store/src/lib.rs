@@ -448,6 +448,61 @@ impl Store {
         rows.map(|row| Ok(row?)).collect()
     }
 
+    pub fn get_decision_point(&self, id: Uuid) -> Result<Option<DecisionPoint>, StoreError> {
+        let mut statement = self.connection.prepare(
+            r#"
+            SELECT id, work_run_id, status, problem, impact, recommended_option_id, options_json, selected_option_id, created_at, resolved_at
+            FROM decision_points
+            WHERE id = ?1
+            "#,
+        )?;
+        let mut rows = statement.query(params![id.to_string()])?;
+        let Some(row) = rows.next()? else {
+            return Ok(None);
+        };
+        let options_json: String = row.get(6)?;
+        let resolved_at: Option<String> = row.get(9)?;
+        Ok(Some(DecisionPoint {
+            id: parse_uuid(row.get::<_, String>(0)?)?,
+            work_run_id: parse_uuid(row.get::<_, String>(1)?)?,
+            status: decode_decision_point_status(&row.get::<_, String>(2)?),
+            problem: row.get(3)?,
+            impact: row.get(4)?,
+            recommended_option_id: row.get(5)?,
+            options: serde_json::from_str(&options_json)?,
+            selected_option_id: row.get(7)?,
+            created_at: decode_time(&row.get::<_, String>(8)?)?,
+            resolved_at: resolved_at.as_deref().map(decode_time).transpose()?,
+        }))
+    }
+
+    pub fn update_decision_point(&self, decision: &DecisionPoint) -> Result<(), StoreError> {
+        self.connection.execute(
+            r#"
+            UPDATE decision_points
+            SET status = ?2,
+                problem = ?3,
+                impact = ?4,
+                recommended_option_id = ?5,
+                options_json = ?6,
+                selected_option_id = ?7,
+                resolved_at = ?8
+            WHERE id = ?1
+            "#,
+            params![
+                decision.id.to_string(),
+                encode_decision_point_status(decision.status),
+                decision.problem,
+                decision.impact,
+                decision.recommended_option_id,
+                serde_json::to_string(&decision.options)?,
+                decision.selected_option_id,
+                decision.resolved_at.map(encode_time),
+            ],
+        )?;
+        Ok(())
+    }
+
     pub fn insert_execution_graph(&self, graph: &ExecutionGraph) -> Result<(), StoreError> {
         self.connection.execute(
             r#"
@@ -467,6 +522,34 @@ impl Store {
             ],
         )?;
         Ok(())
+    }
+
+    pub fn list_execution_graphs_for_work_run(
+        &self,
+        work_run_id: Uuid,
+    ) -> Result<Vec<ExecutionGraph>, StoreError> {
+        let mut statement = self.connection.prepare(
+            r#"
+            SELECT id, work_run_id, version, status, nodes_json, edges_json, created_at
+            FROM execution_graphs
+            WHERE work_run_id = ?1
+            ORDER BY created_at ASC
+            "#,
+        )?;
+        let rows = statement.query_map(params![work_run_id.to_string()], |row| {
+            let nodes_json: String = row.get(4)?;
+            let edges_json: String = row.get(5)?;
+            Ok(ExecutionGraph {
+                id: parse_uuid(row.get::<_, String>(0)?).map_err(to_sql_error)?,
+                work_run_id: parse_uuid(row.get::<_, String>(1)?).map_err(to_sql_error)?,
+                version: row.get(2)?,
+                status: row.get(3)?,
+                nodes: serde_json::from_str(&nodes_json).map_err(to_sql_error)?,
+                edges: serde_json::from_str(&edges_json).map_err(to_sql_error)?,
+                created_at: decode_time(&row.get::<_, String>(6)?).map_err(to_sql_error)?,
+            })
+        })?;
+        rows.map(|row| Ok(row?)).collect()
     }
 
     pub fn insert_agent_run(&self, run: &AgentRun) -> Result<(), StoreError> {
@@ -1042,31 +1125,43 @@ mod tests {
             1
         );
 
-        store
-            .insert_decision_point(&DecisionPoint {
-                id: Uuid::now_v7(),
-                work_run_id: run.id,
-                status: DecisionPointStatus::Pending,
-                problem: "Choose UI style.".to_string(),
-                impact: "Affects the app surface.".to_string(),
-                recommended_option_id: "minimal".to_string(),
-                options: vec![DecisionOption {
-                    id: "minimal".to_string(),
-                    label: "Minimal".to_string(),
-                    tradeoff: "Fast and clean.".to_string(),
-                    plan_delta: "Use a compact timer layout.".to_string(),
-                }],
-                selected_option_id: None,
-                created_at: now,
-                resolved_at: None,
-            })
-            .unwrap();
+        let mut decision = DecisionPoint {
+            id: Uuid::now_v7(),
+            work_run_id: run.id,
+            status: DecisionPointStatus::Pending,
+            problem: "Choose UI style.".to_string(),
+            impact: "Affects the app surface.".to_string(),
+            recommended_option_id: "minimal".to_string(),
+            options: vec![DecisionOption {
+                id: "minimal".to_string(),
+                label: "Minimal".to_string(),
+                tradeoff: "Fast and clean.".to_string(),
+                plan_delta: "Use a compact timer layout.".to_string(),
+            }],
+            selected_option_id: None,
+            created_at: now,
+            resolved_at: None,
+        };
+        store.insert_decision_point(&decision).unwrap();
         assert_eq!(
             store
                 .list_decision_points_for_work_run(run.id)
                 .unwrap()
                 .len(),
             1
+        );
+        decision.status = DecisionPointStatus::Resolved;
+        decision.selected_option_id = Some("minimal".to_string());
+        decision.resolved_at = Some(now);
+        store.update_decision_point(&decision).unwrap();
+        assert_eq!(
+            store
+                .get_decision_point(decision.id)
+                .unwrap()
+                .unwrap()
+                .selected_option_id
+                .as_deref(),
+            Some("minimal")
         );
 
         store
@@ -1080,6 +1175,13 @@ mod tests {
                 created_at: now,
             })
             .unwrap();
+        assert_eq!(
+            store
+                .list_execution_graphs_for_work_run(run.id)
+                .unwrap()
+                .len(),
+            1
+        );
 
         let agent_run = AgentRun {
             id: Uuid::now_v7(),
