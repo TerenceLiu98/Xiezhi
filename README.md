@@ -21,6 +21,15 @@ The ordinary user entry point should feel like this:
 xiezhi run "build a pomodoro app" --runtime opencode --ui
 ```
 
+The current Rust skeleton already supports a smaller local command:
+
+```bash
+cargo run -p xiezhi-cli -- run "build a pomodoro app"
+cargo run -p xiezhi-cli -- workflow check XIEZHI.md
+```
+
+`run` creates a local `WorkItem`, `WorkRun`, and audit `Event` in `.xiezhi/state.sqlite`. `workflow check` validates a workflow file with YAML front matter and supervisor instructions.
+
 XieZhi should then:
 
 1. Create or load a work item.

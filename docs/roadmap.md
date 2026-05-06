@@ -18,13 +18,21 @@ Goal: create a minimal Rust CLI and durable state model.
 
 Deliverables:
 
-- Cargo workspace
-- `xiezhi` CLI
-- local SQLite store
-- WorkItem model
-- WorkRun model
-- Event model
-- basic workflow parser
+- Cargo workspace: started
+- `xiezhi` CLI: started
+- local SQLite store: started
+- WorkItem model: started
+- WorkRun model: started
+- Event model: started
+- basic workflow parser: started
+
+Next:
+
+- add repository-local config discovery
+- add `work show`
+- add migration version tracking
+- persist workspace, supervisor session, decision point, proof, and changeset tables
+- move CLI argument parsing to a real command framework
 
 ## Phase 2: Workspace Orchestration
 
@@ -118,4 +126,3 @@ Deliverables:
 - symbol scope declarations
 - proof graph
 - review/risk model
-

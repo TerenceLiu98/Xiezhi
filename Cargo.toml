@@ -1,6 +1,8 @@
 [workspace]
 members = [
   "crates/xiezhi-core",
+  "crates/xiezhi-store",
+  "crates/xiezhi-workflow",
   "crates/xiezhi-cli"
 ]
 resolver = "3"
@@ -12,8 +14,12 @@ repository = "https://github.com/terenceliu/Xiezhi"
 
 [workspace.dependencies]
 serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 thiserror = "2.0"
 time = { version = "0.3", features = ["serde", "formatting", "parsing"] }
 uuid = { version = "1.12", features = ["serde", "v7"] }
+rusqlite = { version = "0.33", features = ["bundled", "uuid", "time"] }
+serde_yaml = "0.9"
 xiezhi-core = { path = "crates/xiezhi-core" }
-
+xiezhi-store = { path = "crates/xiezhi-store" }
+xiezhi-workflow = { path = "crates/xiezhi-workflow" }

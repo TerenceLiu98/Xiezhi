@@ -71,7 +71,10 @@ pub fn transition_work_run(
 
     run.status = to;
     run.updated_at = OffsetDateTime::now_utc();
-    if matches!(to, WorkRunStatus::Completed | WorkRunStatus::Cancelled | WorkRunStatus::Failed) {
+    if matches!(
+        to,
+        WorkRunStatus::Completed | WorkRunStatus::Cancelled | WorkRunStatus::Failed
+    ) {
         run.completed_at = Some(run.updated_at);
     }
 
@@ -126,7 +129,9 @@ mod tests {
         transition_work_run(&mut run, WorkRunStatus::Cancelled).unwrap();
 
         let error = transition_work_run(&mut run, WorkRunStatus::WorkspaceReady).unwrap_err();
-        assert_eq!(error, LifecycleError::TerminalState(WorkRunStatus::Cancelled));
+        assert_eq!(
+            error,
+            LifecycleError::TerminalState(WorkRunStatus::Cancelled)
+        );
     }
 }
-

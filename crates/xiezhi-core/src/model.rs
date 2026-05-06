@@ -364,4 +364,3 @@ pub struct Event {
     pub payload_json: Option<String>,
     pub created_at: OffsetDateTime,
 }
-
