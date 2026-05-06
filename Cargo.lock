@@ -758,9 +758,11 @@ dependencies = [
 name = "xiezhi-cli"
 version = "0.1.0"
 dependencies = [
+ "serde_json",
  "time",
  "uuid",
  "xiezhi-core",
+ "xiezhi-hooks",
  "xiezhi-store",
  "xiezhi-workflow",
  "xiezhi-workspace",
@@ -774,6 +776,15 @@ dependencies = [
  "thiserror",
  "time",
  "uuid",
+]
+
+[[package]]
+name = "xiezhi-hooks"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "thiserror",
+ "time",
 ]
 
 [[package]]

@@ -35,9 +35,7 @@ impl WorkspaceManager {
     }
 
     pub fn create_run_workspace(&self, run: &WorkRun) -> Result<Workspace, WorkspaceError> {
-        let short_id = run.id.to_string();
-        let short_id = &short_id[..8];
-        let path = self.root.join(format!("run-{short_id}"));
+        let path = self.root.join(format!("run-{}", run.id));
         fs::create_dir_all(&path)?;
 
         let now = OffsetDateTime::now_utc();

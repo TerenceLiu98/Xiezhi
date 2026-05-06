@@ -1,6 +1,7 @@
 use std::env;
 
 use xiezhi_core::{Event, EventActor, WorkItem, WorkRun, WorkRunStatus, transition_work_run};
+use xiezhi_hooks::HookRunner;
 use xiezhi_store::Store;
 use xiezhi_workflow::load_workflow;
 use xiezhi_workspace::WorkspaceManager;
@@ -86,6 +87,43 @@ fn main() {
                     eprintln!("failed to persist event: {error}");
                     std::process::exit(1);
                 });
+            if let Some(command) = workflow.hooks.after_workspace_create.as_deref() {
+                let hook_output =
+                    HookRunner::run("after_workspace_create", command, &workspace.path)
+                        .unwrap_or_else(|error| {
+                            eprintln!("failed to run after_workspace_create hook: {error}");
+                            std::process::exit(1);
+                        });
+                let hook_success = hook_output.success();
+                let hook_payload = serde_json::to_string(&hook_output).unwrap_or_else(|error| {
+                    eprintln!("failed to encode hook evidence: {error}");
+                    std::process::exit(1);
+                });
+                store
+                    .insert_event(&Event {
+                        id: uuid::Uuid::now_v7(),
+                        work_run_id: run.id,
+                        actor: EventActor::XieZhi,
+                        event_type: "hook_after_workspace_create".to_string(),
+                        summary: hook_output.summary(),
+                        payload_json: Some(hook_payload),
+                        created_at: time::OffsetDateTime::now_utc(),
+                    })
+                    .unwrap_or_else(|error| {
+                        eprintln!("failed to persist hook event: {error}");
+                        std::process::exit(1);
+                    });
+                if !hook_success {
+                    transition_work_run(&mut run, WorkRunStatus::Failed).unwrap_or_else(|error| {
+                        eprintln!("failed to mark work run failed: {error}");
+                        std::process::exit(1);
+                    });
+                    store.update_work_run(&run).unwrap_or_else(|error| {
+                        eprintln!("failed to update failed work run: {error}");
+                        std::process::exit(1);
+                    });
+                }
+            }
             println!("created work item: {}", item.id);
             println!("created work run: {}", run.id);
             println!("workspace: {}", workspace.path);
