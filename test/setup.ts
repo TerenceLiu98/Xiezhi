@@ -1,1 +1,0 @@
-process.env.XIEZHI_FORCE_SCAFFOLD_RUNTIMES = "1"

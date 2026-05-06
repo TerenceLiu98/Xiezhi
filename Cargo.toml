@@ -1,0 +1,19 @@
+[workspace]
+members = [
+  "crates/xiezhi-core",
+  "crates/xiezhi-cli"
+]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+license = "AGPL-3.0-or-later"
+repository = "https://github.com/terenceliu/Xiezhi"
+
+[workspace.dependencies]
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "2.0"
+time = { version = "0.3", features = ["serde", "formatting", "parsing"] }
+uuid = { version = "1.12", features = ["serde", "v7"] }
+xiezhi-core = { path = "crates/xiezhi-core" }
+

@@ -1,280 +1,53 @@
 # XieZhi
 
-[![License: AGPL v3+](https://img.shields.io/badge/license-AGPL%20v3%2B-0f766e.svg)](/Users/terenceliu/Downloads/development/xiezhi/LICENSE)
-![Status](https://img.shields.io/badge/status-alpha-b45309)
-![Node](https://img.shields.io/badge/node-%3E%3D22-3c873a)
-![TypeScript](https://img.shields.io/badge/built%20with-TypeScript-3178c6)
+XieZhi is a local-first orchestration framework for autonomous software work.
 
-XieZhi is a DAG, multi-language AST, assignment, patch, and evidence framework for AI-assisted software development.
+It runs supervisor agents against work items in isolated workspaces, records product decisions and engineering proof, constrains drift with DAG/AST/scope evidence, and lets humans manage acceptance instead of supervising code generation.
 
-Instead of letting an agent directly edit a codebase and hoping the diff looks reasonable, XieZhi adds a control layer on top of an agent runtime such as OpenCode. The agent owns planning and orchestration; XieZhi validates the agent's structured plan into DAG state, constrains what each task is allowed to change, and verifies whether the resulting patch actually matches the task.
+## Direction
 
-## Why
+XieZhi is being redesigned as a Rust + Tauri application.
 
-AI coding tools are getting better at writing code, but software teams still struggle with control:
+- Rust core for orchestration, state machines, workspace isolation, runtime adapters, tracker integrations, proof collection, and durable storage.
+- Tauri desktop app for the local Work Console.
+- Agent runtimes such as OpenCode, Codex, and Claude Code as pluggable backends.
+- Workflow configuration inspired by Symphony and Baton, but with XieZhi-specific DAG/AST/scope/proof guardrails.
 
-- Requirements are not traceable to code changes.
-- Agents can modify unrelated files or modules.
-- Text diffs are hard to review at a semantic level.
-- Tests and acceptance criteria are often incomplete or unstable.
-- After multiple rounds of vibe coding, it becomes hard to explain what changed and why.
+## User Experience
 
-XieZhi is built to make AI-generated changes more:
-
-- Planned
-- Constrained
-- Traceable
-- Verifiable
-
-For more background on the motivation behind controlled vibe coding, see [🤓 Humans do Marginalia, AIs doe Zettelkasten - 构建科研民工的第二大脑 (2)](https://blog.cklau.cc/post/sapientia-development-2/).
-
-## Core Idea
-
-XieZhi sits between an agent's plan and an AI coding runtime:
-
-```text
-User Goal
-  -> OpenCode Supervisor Agent
-  -> Supervisor Intake / DecisionPoint / Handoff
-  -> Normalized AgentPlan JSON
-  -> Feature DAG
-  -> Task DAG
-  -> Intent IR
-  -> Policy
-  -> Coding Runtime
-  -> Patch
-  -> Multi-language Semantic Diff
-  -> Consistency Verifier
-  -> Human Review
-```
-
-The goal is simple:
-
-> No task, no patch.
-
-Every meaningful code change should be tied to a task, scoped to allowed files or symbols, and reviewed with semantic context instead of raw diff alone.
-
-## What v1 Includes
-
-The first version is intentionally CLI-first and local-first.
-
-- A CLI for importing agent plans, running scoped tasks, verifying patches, and reviewing evidence
-- `xiezhi agent build --ui` for natural-language goals where the main agent owns assumptions, product decisions, subagent planning, progress reports, and solution proposals
-- Feature DAG and Task DAG generation from strict AgentPlan JSON
-- Intent IR and task-scoped execution policy
-- Repository indexing for TypeScript, JavaScript, and Python projects
-- AST-based semantic diff
-- Patch verification for undeclared scope, missing declared checks, and risky API changes
-- Automatic build-loop recovery evidence, including agent-declared scope revision when a valid patch needs a wider declaration
-- Worktree-isolated task execution through OpenCode
-
-## What v1 Does Not Include
-
-- A full IDE
-- A multi-tenant cloud platform
-- Support for every language
-- A custom agent runtime
-- Automatic merge to `main`
-
-## Example Workflow
-
-For an existing TypeScript, JavaScript, or Python repo:
+The ordinary user entry point should feel like this:
 
 ```bash
-xiezhi init
-xiezhi index
-xiezhi agent plan "add team invitation feature" --runtime opencode
-xiezhi dag show
-xiezhi task list
-xiezhi agent session show
-xiezhi agent ready --json
-xiezhi agent run <task-id> --runtime opencode
-xiezhi verify <patch-id>
-xiezhi review <patch-id>
-xiezhi patch promote <patch-id>
+xiezhi run "build a pomodoro app" --runtime opencode --ui
 ```
 
-When the ready queue contains non-overlapping scopes, a main agent can run one safe execution group:
+XieZhi should then:
 
-```bash
-xiezhi agent run-ready --runtime opencode --parallel 2 --auto --decision-runtime opencode
-```
+1. Create or load a work item.
+2. Create an isolated workspace.
+3. Start a supervisor agent session.
+4. Ask the user only for product, architecture, UX, or acceptance decisions.
+5. Normalize the supervisor plan into an execution graph.
+6. Run implementation work through agent backends.
+7. Collect proof: checks, semantic diff, review, smoke tests, screenshots, app launch evidence, and promotion commits.
+8. Recover automatically from ordinary engineering blockers.
+9. Present final acceptance to the human.
 
-For a greenfield app idea, the ordinary user entrypoint starts the local Graph UI:
+## What XieZhi Is Not
 
-```bash
-xiezhi init
-xiezhi agent build "build a 番茄钟" --runtime opencode --ui --parallel 4
-```
+- Not an app builder.
+- Not a hardcoded planner.
+- Not a replacement for OpenCode, Codex, or Claude Code.
+- Not a product decision maker.
+- Not a generic CI system.
 
-By default, `agent build` starts with a fast supervisor intake instead of forcing an immediate strict plan. OpenCode may explore the repo, report observations, expose product, UI, architecture, or validation decision points, outline subagent work, and then hand off a `SupervisorHandoff v1`. XieZhi records that evidence and asks the runtime to normalize the handoff into strict `AgentPlan v1` before guarded execution begins.
+XieZhi is the orchestration layer around autonomous implementation work.
 
-`--parallel` is a safety/resource limit. The OpenCode supervisor agent declares how many subagents to use and how work is grouped; XieZhi validates that plan against DAG, file scope, AST scope, patch lifecycle, and promotion rules. The UI shows supervisor exploration, product decision points, selected model, current phase, active subagents, progress evidence, and the full DAG debug graph.
+## Design Docs
 
-For greenfield app goals, the supervisor should ask user-facing decisions for MVP feature scope, UI/interaction style, and validation/check policy. Validation strictness is intentionally a user tradeoff: fast smoke, build/typecheck required, or build plus tests required.
-
-During task execution, XieZhi runs OpenCode inside an isolated task worktree and auto-approves OpenCode permissions for that worktree so non-interactive builds do not stall. The task prompt forbids touching the parent repository or sibling worktrees; patch promotion remains a XieZhi operation.
-
-For debugging the old strict import path directly:
-
-```bash
-xiezhi agent build "build a 番茄钟" --runtime opencode --strict-plan-first --dry-run-plan
-```
-
-To choose a specific OpenCode provider/model, pass OpenCode's `provider/model` id through XieZhi:
-
-```bash
-xiezhi agent build "build a 番茄钟" --runtime opencode --model anthropic/claude-sonnet-4-5 --ui
-```
-
-Use `--decision-model <provider/model>` when warning-promotion decisions should use a different model; otherwise XieZhi reuses `--model`.
-
-For lower-level inspection, the same flow can be driven step by step:
-
-```bash
-xiezhi agent plan "build a bookkeeping app" --runtime opencode
-xiezhi dag show
-xiezhi task list
-xiezhi agent feedback "the running app needs clearer save status" --runtime opencode
-```
-
-Example review output:
-
-```text
-Semantic Diff:
-  Added:
-    - route POST /teams/:teamId/invitations
-    - function createInvitation
-    - test non-admin cannot invite
-
-Warnings:
-  - public type changed: TeamRole
-  - missing test: invitation expiry
-```
-
-## Demo: Budgeting App Increment
-
-Imagine a user is building a personal finance app and wants to add a monthly budget alert:
-
-> Add a feature so users get a warning when spending in a category exceeds the monthly budget.
-
-With a normal coding agent, that request might lead to broad edits across transactions, notifications, and unrelated settings screens.
-
-With XieZhi, the flow is narrower and easier to review:
-
-```bash
-xiezhi init
-xiezhi index
-xiezhi agent plan "add monthly category budget alerts to the budgeting app" --runtime opencode
-xiezhi dag show
-xiezhi task list
-```
-
-At this point, the agent returns an AgentPlan that XieZhi validates into a small task graph such as:
-
-```text
-Feature: Monthly category budget alerts
-
-Tasks:
-  1. Confirm touchpoints for budget alerts
-  2. Implement budget alert calculation
-  3. Verify budget alert coverage
-```
-
-Then the user runs one task in isolation:
-
-```bash
-xiezhi agent run <task-id> --runtime opencode
-```
-
-XieZhi creates a dedicated git worktree for that task, injects the task goal and allowed file scope, and captures the resulting patch.
-
-After the runtime finishes, the user verifies the patch:
-
-```bash
-xiezhi verify <patch-id>
-xiezhi review <patch-id>
-```
-
-Example review output for the budgeting app might look like:
-
-```text
-Semantic Diff:
-  Added:
-    - function calculateBudgetAlert
-    - route GET /budgets/:categoryId/alerts
-    - test budget alert triggers after monthly limit is crossed
-
-Warnings:
-  - public type changed: BudgetAlert
-```
-
-If the patch looks good, the user can explicitly accept it:
-
-```bash
-xiezhi patch promote <patch-id>
-```
-
-If the runtime edits something out of scope, like `src/auth/session.ts` or `src/settings/currency.ts`, XieZhi can reject the patch and tell the user to retry or discard it instead of silently letting unrelated changes through.
-
-## Design Principles
-
-- Agents plan and execute, XieZhi controls.
-- AI should operate through explicit task contracts, not free-form sessions.
-- Text diff is not enough; semantic diff matters.
-- Patch validation is mandatory.
-- Local execution comes first.
-
-## Status
-
-This repo is now at a `v1 alpha` with real runtime bridges for the CLIs available on the local machine.
-
-- The control loop is real
-- OpenCode, Claude, and Codex share one runtime execution surface
-- Claude and Codex can use real CLI bridges when available
-- Agent planning requires a real planning runtime
-
-## Alpha Smoke
-
-```bash
-pnpm typecheck
-pnpm test
-pnpm build
-pnpm smoke:alpha
-```
-
-The alpha smoke path covers:
-
-- `warning` verification
-- `accepted` verification
-- `rejected` verification
-- discard / retry operator recovery
-
-## Install
-
-```bash
-pnpm install
-pnpm build
-pnpm link --global
-xiezhi doctor
-```
-
-`xiezhi init` can now initialize a git repository for a plain directory. If the repo still has no commit yet, XieZhi will let you run `agent plan`, but it will ask for a baseline commit before `xiezhi agent run`.
-
-More detailed install and preset guidance lives in [docs/install.md](/Users/terenceliu/Downloads/development/xiezhi/docs/install.md:1).
-
-## Roadmap Focus
-
-The immediate goal is to prove a tight v1 loop:
-
-1. Index a real TypeScript repository.
-2. Let a supervisor agent explore, hand off, and normalize a runnable task graph.
-3. Execute one task in an isolated worktree.
-4. Produce a semantic diff and verification report.
-5. Accept a good patch or reject an out-of-scope one.
-
-## License
-
-XieZhi is licensed under the GNU Affero General Public License v3.0 or later.
-
-See [LICENSE](/Users/terenceliu/Downloads/development/xiezhi/LICENSE:1).
+- [Architecture](docs/architecture.md)
+- [Data Model](docs/data-model.md)
+- [Workflow Spec](docs/workflow-spec.md)
+- [Runtime Backends](docs/runtime-backends.md)
+- [Work Run Lifecycle](docs/work-run-lifecycle.md)
+- [Roadmap](docs/roadmap.md)
