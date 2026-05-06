@@ -1,14 +1,14 @@
-use std::{env, fs};
+use std::{env, fs, path::Path};
 
 use xiezhi_core::{
-    AgentRole, AgentRun, AgentRunStatus, DecisionOption, DecisionPoint, DecisionPointStatus, Event,
-    EventActor, GraphNodeKind, RuntimeKind, SupervisorSession, SupervisorSessionStatus, WorkItem,
-    WorkRun, WorkRunStatus, transition_work_run,
+    AgentRole, AgentRun, AgentRunStatus, ChangeSet, ChangeSetStatus, DecisionOption, DecisionPoint,
+    DecisionPointStatus, Event, EventActor, GraphNodeKind, RuntimeKind, SupervisorSession,
+    SupervisorSessionStatus, WorkItem, WorkRun, WorkRunStatus, transition_work_run,
 };
 use xiezhi_hooks::HookRunner;
 use xiezhi_runtime::{
     RuntimeStructuredEvent, SupervisorIntakeInput, build_supervisor_intake_prompt,
-    execution_graph_from_supervisor_handoff, run_supervisor_intake_command,
+    execution_graph_from_supervisor_handoff, run_agent_command, run_supervisor_intake_command,
     write_supervisor_intake_prompt,
 };
 use xiezhi_store::Store;
@@ -425,6 +425,27 @@ fn main() {
                         agent_run.model.as_deref().unwrap_or("<default>")
                     );
                 }
+                let changesets =
+                    store
+                        .list_changesets_for_work_run(run.id)
+                        .unwrap_or_else(|error| {
+                            eprintln!("failed to load changesets: {error}");
+                            std::process::exit(1);
+                        });
+                println!("changesets: {}", changesets.len());
+                for changeset in changesets {
+                    println!(
+                        "- changeset {} agent:{} workspace:{} status:{:?} files:{}",
+                        changeset.id,
+                        changeset.agent_run_id,
+                        changeset.workspace_id,
+                        changeset.status,
+                        changeset.changed_files.len()
+                    );
+                    for changed_file in changeset.changed_files {
+                        println!("  - {changed_file}");
+                    }
+                }
                 println!("events: {}", events.len());
                 for event in events {
                     println!(
@@ -442,6 +463,23 @@ fn main() {
                 println!("  xiezhi work dispatch <run-id>");
             }
         },
+        Some("agent") => match args.next().as_deref() {
+            Some("run") => {
+                let Some(id) = args.next() else {
+                    eprintln!("usage: xiezhi agent run <agent-run-id>");
+                    std::process::exit(2);
+                };
+                let agent_run_id = uuid::Uuid::parse_str(&id).unwrap_or_else(|error| {
+                    eprintln!("invalid agent run id: {error}");
+                    std::process::exit(2);
+                });
+                run_agent_run_or_exit(agent_run_id);
+            }
+            _ => {
+                println!("usage:");
+                println!("  xiezhi agent run <agent-run-id>");
+            }
+        },
         _ => {
             println!("xiezhi orchestration framework");
             println!();
@@ -452,6 +490,7 @@ fn main() {
             println!("  xiezhi work intake <run-id>");
             println!("  xiezhi work decide <decision-id> <option-id>");
             println!("  xiezhi work dispatch <run-id>");
+            println!("  xiezhi agent run <agent-run-id>");
             println!("  xiezhi workflow check [path]");
             println!("  xiezhi --version");
         }
@@ -838,6 +877,272 @@ fn dispatch_work_run_or_exit(run_id: uuid::Uuid) {
     println!("execution graph: {}", graph.id);
     println!("created: {created}");
     println!("skipped: {skipped}");
+}
+
+fn run_agent_run_or_exit(agent_run_id: uuid::Uuid) {
+    let workflow = load_workflow("XIEZHI.md").ok().unwrap_or_default();
+    let store = open_store_or_exit();
+    let mut agent_run = store
+        .get_agent_run(agent_run_id)
+        .unwrap_or_else(|error| {
+            eprintln!("failed to load agent run: {error}");
+            std::process::exit(1);
+        })
+        .unwrap_or_else(|| {
+            eprintln!("agent run not found: {agent_run_id}");
+            std::process::exit(1);
+        });
+    if agent_run.status != AgentRunStatus::Planned {
+        eprintln!("agent run is not planned: {:?}", agent_run.status);
+        std::process::exit(2);
+    }
+    let workspace = store
+        .get_workspace(agent_run.workspace_id)
+        .unwrap_or_else(|error| {
+            eprintln!("failed to load agent workspace: {error}");
+            std::process::exit(1);
+        })
+        .unwrap_or_else(|| {
+            eprintln!("agent workspace not found: {}", agent_run.workspace_id);
+            std::process::exit(1);
+        });
+    let assignment = build_agent_assignment(&agent_run, &workspace);
+    let assignment_path = format!("{}/xiezhi-agent-assignment.md", workspace.path);
+    fs::write(&assignment_path, &assignment).unwrap_or_else(|error| {
+        eprintln!("failed to write agent assignment: {error}");
+        std::process::exit(1);
+    });
+
+    agent_run.status = AgentRunStatus::Running;
+    agent_run.started_at = time::OffsetDateTime::now_utc();
+    store.update_agent_run(&agent_run).unwrap_or_else(|error| {
+        eprintln!("failed to mark agent run running: {error}");
+        std::process::exit(1);
+    });
+    store
+        .insert_event(&Event {
+            id: uuid::Uuid::now_v7(),
+            work_run_id: agent_run.work_run_id,
+            actor: EventActor::XieZhi,
+            event_type: "agent_run_started".to_string(),
+            summary: format!("Started agent run {}.", agent_run.id),
+            payload_json: Some(
+                serde_json::json!({
+                    "agent_run_id": agent_run.id,
+                    "workspace_id": workspace.id,
+                    "assignment_path": assignment_path,
+                })
+                .to_string(),
+            ),
+            created_at: time::OffsetDateTime::now_utc(),
+        })
+        .unwrap_or_else(|error| {
+            eprintln!("failed to persist agent run start event: {error}");
+            std::process::exit(1);
+        });
+
+    let output = run_agent_command(
+        &workflow.agent_runtime.command,
+        &workspace.path,
+        &assignment,
+        agent_run.model.as_deref(),
+    )
+    .unwrap_or_else(|error| {
+        eprintln!("failed to run agent command: {error}");
+        std::process::exit(1);
+    });
+    let output_payload = serde_json::to_string(&output).unwrap_or_else(|error| {
+        eprintln!("failed to encode agent runtime output: {error}");
+        std::process::exit(1);
+    });
+    store
+        .insert_event(&Event {
+            id: uuid::Uuid::now_v7(),
+            work_run_id: agent_run.work_run_id,
+            actor: EventActor::Runtime,
+            event_type: "agent_run_runtime_output".to_string(),
+            summary: format!(
+                "Agent command exited with {:?}; extracted {} structured event(s).",
+                output.exit_code,
+                output.structured_events.len()
+            ),
+            payload_json: Some(output_payload),
+            created_at: time::OffsetDateTime::now_utc(),
+        })
+        .unwrap_or_else(|error| {
+            eprintln!("failed to persist agent runtime output: {error}");
+            std::process::exit(1);
+        });
+
+    let changed_files = collect_workspace_changed_files(&workspace.path).unwrap_or_else(|error| {
+        eprintln!("failed to collect workspace changes: {error}");
+        std::process::exit(1);
+    });
+    let changeset_id = if output.success() {
+        let now = time::OffsetDateTime::now_utc();
+        let changeset = ChangeSet {
+            id: uuid::Uuid::now_v7(),
+            work_run_id: agent_run.work_run_id,
+            agent_run_id: agent_run.id,
+            workspace_id: workspace.id,
+            status: ChangeSetStatus::Captured,
+            changed_files,
+            diff_ref: None,
+            created_at: now,
+            updated_at: now,
+        };
+        store.insert_changeset(&changeset).unwrap_or_else(|error| {
+            eprintln!("failed to persist changeset: {error}");
+            std::process::exit(1);
+        });
+        store
+            .insert_event(&Event {
+                id: uuid::Uuid::now_v7(),
+                work_run_id: agent_run.work_run_id,
+                actor: EventActor::XieZhi,
+                event_type: "changeset_captured".to_string(),
+                summary: format!(
+                    "Captured changeset with {} file(s).",
+                    changeset.changed_files.len()
+                ),
+                payload_json: Some(
+                    serde_json::json!({
+                        "changeset_id": changeset.id,
+                        "agent_run_id": changeset.agent_run_id,
+                        "workspace_id": changeset.workspace_id,
+                        "changed_files": changeset.changed_files,
+                    })
+                    .to_string(),
+                ),
+                created_at: time::OffsetDateTime::now_utc(),
+            })
+            .unwrap_or_else(|error| {
+                eprintln!("failed to persist changeset event: {error}");
+                std::process::exit(1);
+            });
+        Some(changeset.id)
+    } else {
+        None
+    };
+
+    agent_run.status = if output.success() {
+        AgentRunStatus::Completed
+    } else {
+        AgentRunStatus::Failed
+    };
+    agent_run.ended_at = Some(time::OffsetDateTime::now_utc());
+    store.update_agent_run(&agent_run).unwrap_or_else(|error| {
+        eprintln!("failed to update agent run completion: {error}");
+        std::process::exit(1);
+    });
+    store
+        .insert_event(&Event {
+            id: uuid::Uuid::now_v7(),
+            work_run_id: agent_run.work_run_id,
+            actor: EventActor::XieZhi,
+            event_type: "agent_run_finished".to_string(),
+            summary: format!(
+                "Agent run {} finished as {:?}.",
+                agent_run.id, agent_run.status
+            ),
+            payload_json: Some(
+                serde_json::json!({
+                    "agent_run_id": agent_run.id,
+                    "status": format!("{:?}", agent_run.status),
+                    "exit_code": output.exit_code,
+                    "changeset_id": changeset_id,
+                })
+                .to_string(),
+            ),
+            created_at: time::OffsetDateTime::now_utc(),
+        })
+        .unwrap_or_else(|error| {
+            eprintln!("failed to persist agent run finish event: {error}");
+            std::process::exit(1);
+        });
+
+    println!("agent run: {}", agent_run.id);
+    println!("status: {:?}", agent_run.status);
+    println!("runtime exit: {:?}", output.exit_code);
+    println!("workspace: {}", workspace.path);
+    if let Some(changeset_id) = changeset_id {
+        println!("changeset: {changeset_id}");
+    }
+}
+
+fn collect_workspace_changed_files(workspace_path: &str) -> std::io::Result<Vec<String>> {
+    let mut changed_files = Vec::new();
+    collect_workspace_changed_files_inner(
+        Path::new(workspace_path),
+        Path::new(workspace_path),
+        &mut changed_files,
+    )?;
+    changed_files.sort();
+    Ok(changed_files)
+}
+
+fn collect_workspace_changed_files_inner(
+    root: &Path,
+    current: &Path,
+    changed_files: &mut Vec<String>,
+) -> std::io::Result<()> {
+    for entry in fs::read_dir(current)? {
+        let entry = entry?;
+        let path = entry.path();
+        let file_name = entry.file_name();
+        let file_name = file_name.to_string_lossy();
+        if file_name == "xiezhi-workspace.json" || file_name == "xiezhi-agent-assignment.md" {
+            continue;
+        }
+        if path.is_dir() {
+            collect_workspace_changed_files_inner(root, &path, changed_files)?;
+            continue;
+        }
+        if path.is_file() {
+            if let Ok(relative) = path.strip_prefix(root) {
+                changed_files.push(relative.to_string_lossy().to_string());
+            }
+        }
+    }
+    Ok(())
+}
+
+fn build_agent_assignment(agent_run: &AgentRun, workspace: &xiezhi_core::Workspace) -> String {
+    format!(
+        r#"# XieZhi Agent Assignment
+
+## AgentRun
+
+- agent_run_id: {agent_run_id}
+- work_run_id: {work_run_id}
+- execution_graph_node_id: {execution_graph_node_id}
+- role: {role:?}
+- runtime: {runtime:?}
+- model: {model}
+
+## Workspace
+
+- workspace_id: {workspace_id}
+- workspace_path: {workspace_path}
+
+## Instructions
+
+Work only inside the assigned agent workspace. Do not write directly to the target repository or another agent workspace.
+
+This skeleton run captures command output and agent status only. ChangeSet capture and proof collection happen in a later phase.
+"#,
+        agent_run_id = agent_run.id,
+        work_run_id = agent_run.work_run_id,
+        execution_graph_node_id = agent_run
+            .execution_graph_node_id
+            .map(|id| id.to_string())
+            .unwrap_or_else(|| "<none>".to_string()),
+        role = agent_run.role,
+        runtime = agent_run.runtime,
+        model = agent_run.model.as_deref().unwrap_or("<default>"),
+        workspace_id = workspace.id,
+        workspace_path = workspace.path,
+    )
 }
 
 fn persist_structured_runtime_event_or_exit(

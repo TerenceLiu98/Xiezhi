@@ -40,6 +40,7 @@ cargo run -p xiezhi-cli -- work show <run-id>
 cargo run -p xiezhi-cli -- work intake <run-id>
 cargo run -p xiezhi-cli -- work decide <decision-id> <option-id>
 cargo run -p xiezhi-cli -- work dispatch <run-id>
+cargo run -p xiezhi-cli -- agent run <agent-run-id>
 ```
 
 XieZhi should then:

@@ -131,6 +131,8 @@ After graph normalization, XieZhi should materialize task nodes into agent works
 
 `xiezhi work dispatch <run-id>` is the current materialization skeleton. It does not start subagent runtimes yet. It creates one `WorkspaceKind::Agent` workspace and one planned `AgentRun` for each task node in the latest draft ExecutionGraph, and it is idempotent by task node id.
 
+`xiezhi agent run <agent-run-id>` is the current agent execution skeleton. It runs the configured command inside the assigned agent workspace, writes `xiezhi-agent-assignment.md`, captures raw runtime output, marks the AgentRun completed or failed, and records a minimal ChangeSet from non-XieZhi files found in the workspace.
+
 ## Runtime Policy
 
 Runtime permissions are workspace-scoped by default.

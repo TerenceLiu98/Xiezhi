@@ -576,6 +576,50 @@ impl Store {
         Ok(())
     }
 
+    pub fn get_agent_run(&self, id: Uuid) -> Result<Option<AgentRun>, StoreError> {
+        let mut statement = self.connection.prepare(
+            r#"
+            SELECT id, work_run_id, execution_graph_node_id, workspace_id, runtime, model, role, status, started_at, ended_at
+            FROM agent_runs
+            WHERE id = ?1
+            "#,
+        )?;
+        let mut rows = statement.query(params![id.to_string()])?;
+        let Some(row) = rows.next()? else {
+            return Ok(None);
+        };
+        Ok(Some(decode_agent_run_row(row)?))
+    }
+
+    pub fn update_agent_run(&self, run: &AgentRun) -> Result<(), StoreError> {
+        self.connection.execute(
+            r#"
+            UPDATE agent_runs
+            SET execution_graph_node_id = ?2,
+                workspace_id = ?3,
+                runtime = ?4,
+                model = ?5,
+                role = ?6,
+                status = ?7,
+                started_at = ?8,
+                ended_at = ?9
+            WHERE id = ?1
+            "#,
+            params![
+                run.id.to_string(),
+                run.execution_graph_node_id.map(|id| id.to_string()),
+                run.workspace_id.to_string(),
+                encode_runtime_kind(run.runtime),
+                run.model,
+                encode_agent_role(run.role),
+                encode_agent_run_status(run.status),
+                encode_time(run.started_at),
+                run.ended_at.map(encode_time),
+            ],
+        )?;
+        Ok(())
+    }
+
     pub fn list_agent_runs_for_work_run(
         &self,
         work_run_id: Uuid,
@@ -639,6 +683,35 @@ impl Store {
             ],
         )?;
         Ok(())
+    }
+
+    pub fn list_changesets_for_work_run(
+        &self,
+        work_run_id: Uuid,
+    ) -> Result<Vec<ChangeSet>, StoreError> {
+        let mut statement = self.connection.prepare(
+            r#"
+            SELECT id, work_run_id, agent_run_id, workspace_id, status, changed_files_json, diff_ref, created_at, updated_at
+            FROM changesets
+            WHERE work_run_id = ?1
+            ORDER BY created_at ASC
+            "#,
+        )?;
+        let rows = statement.query_map(params![work_run_id.to_string()], |row| {
+            let changed_files_json: String = row.get(5)?;
+            Ok(ChangeSet {
+                id: parse_uuid(row.get::<_, String>(0)?).map_err(to_sql_error)?,
+                work_run_id: parse_uuid(row.get::<_, String>(1)?).map_err(to_sql_error)?,
+                agent_run_id: parse_uuid(row.get::<_, String>(2)?).map_err(to_sql_error)?,
+                workspace_id: parse_uuid(row.get::<_, String>(3)?).map_err(to_sql_error)?,
+                status: decode_changeset_status(&row.get::<_, String>(4)?),
+                changed_files: serde_json::from_str(&changed_files_json).map_err(to_sql_error)?,
+                diff_ref: row.get(6)?,
+                created_at: decode_time(&row.get::<_, String>(7)?).map_err(to_sql_error)?,
+                updated_at: decode_time(&row.get::<_, String>(8)?).map_err(to_sql_error)?,
+            })
+        })?;
+        rows.map(|row| Ok(row?)).collect()
     }
 
     pub fn insert_proof(&self, proof: &Proof) -> Result<(), StoreError> {
@@ -1092,6 +1165,16 @@ fn encode_changeset_status(value: ChangeSetStatus) -> &'static str {
     }
 }
 
+fn decode_changeset_status(value: &str) -> ChangeSetStatus {
+    match value {
+        "verified" => ChangeSetStatus::Verified,
+        "held" => ChangeSetStatus::Held,
+        "promoted" => ChangeSetStatus::Promoted,
+        "rejected" => ChangeSetStatus::Rejected,
+        _ => ChangeSetStatus::Captured,
+    }
+}
+
 fn encode_proof_type(value: ProofType) -> &'static str {
     match value {
         ProofType::Command => "command",
@@ -1285,6 +1368,17 @@ mod tests {
         store.insert_agent_run(&agent_run).unwrap();
         assert_eq!(store.list_agent_runs_for_work_run(run.id).unwrap().len(), 1);
         assert_eq!(
+            store.get_agent_run(agent_run.id).unwrap().unwrap().status,
+            AgentRunStatus::Completed
+        );
+        let mut updated_agent_run = agent_run.clone();
+        updated_agent_run.status = AgentRunStatus::Running;
+        store.update_agent_run(&updated_agent_run).unwrap();
+        assert_eq!(
+            store.get_agent_run(agent_run.id).unwrap().unwrap().status,
+            AgentRunStatus::Running
+        );
+        assert_eq!(
             store
                 .get_agent_run_for_graph_node(run.id, agent_run.execution_graph_node_id.unwrap())
                 .unwrap()
@@ -1305,6 +1399,10 @@ mod tests {
             updated_at: now,
         };
         store.insert_changeset(&changeset).unwrap();
+        assert_eq!(
+            store.list_changesets_for_work_run(run.id).unwrap()[0].changed_files,
+            vec!["src/main.rs".to_string()]
+        );
 
         store
             .insert_proof(&Proof {

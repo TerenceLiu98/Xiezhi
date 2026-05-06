@@ -76,6 +76,45 @@ pub fn run_supervisor_intake_command(
     })
 }
 
+pub fn run_agent_command(
+    command: &str,
+    cwd: impl AsRef<Path>,
+    assignment: &str,
+    model: Option<&str>,
+) -> Result<RuntimeCommandOutput, RuntimeError> {
+    let mut child = Command::new("sh")
+        .arg("-c")
+        .arg(command)
+        .current_dir(cwd)
+        .env("XIEZHI_AGENT_ASSIGNMENT", assignment)
+        .env("XIEZHI_RUNTIME_MODEL", model.unwrap_or(""))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+
+    if let Some(stdin) = child.stdin.as_mut() {
+        match stdin.write_all(assignment.as_bytes()) {
+            Ok(()) => {}
+            Err(error) if error.kind() == ErrorKind::BrokenPipe => {}
+            Err(error) => return Err(error.into()),
+        }
+    }
+
+    let output = child.wait_with_output()?;
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let structured_events = extract_structured_events(&format!("{stdout}\n{stderr}"));
+
+    Ok(RuntimeCommandOutput {
+        command: command.to_string(),
+        exit_code: output.status.code(),
+        stdout,
+        stderr,
+        structured_events,
+    })
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SupervisorIntakeInput {
     pub goal: String,
@@ -508,6 +547,14 @@ Continuing after decision.
 
         assert!(output.success());
         assert_eq!(output.stdout, "hello supervisor");
+    }
+
+    #[test]
+    fn sends_assignment_to_agent_stdin() {
+        let output = run_agent_command("cat", ".", "hello agent", Some("provider/model")).unwrap();
+
+        assert!(output.success());
+        assert_eq!(output.stdout, "hello agent");
     }
 
     #[test]
