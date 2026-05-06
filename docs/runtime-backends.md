@@ -129,6 +129,8 @@ This is intentionally minimal. The next layer should replace it with a stricter 
 
 After graph normalization, XieZhi should materialize task nodes into agent workspaces and AgentRuns before invoking subagent runtimes.
 
+`xiezhi work dispatch <run-id>` is the current materialization skeleton. It does not start subagent runtimes yet. It creates one `WorkspaceKind::Agent` workspace and one planned `AgentRun` for each task node in the latest draft ExecutionGraph, and it is idempotent by task node id.
+
 ## Runtime Policy
 
 Runtime permissions are workspace-scoped by default.

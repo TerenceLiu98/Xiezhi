@@ -1,9 +1,9 @@
 use std::{env, fs};
 
 use xiezhi_core::{
-    DecisionOption, DecisionPoint, DecisionPointStatus, Event, EventActor, RuntimeKind,
-    SupervisorSession, SupervisorSessionStatus, WorkItem, WorkRun, WorkRunStatus,
-    transition_work_run,
+    AgentRole, AgentRun, AgentRunStatus, DecisionOption, DecisionPoint, DecisionPointStatus, Event,
+    EventActor, GraphNodeKind, RuntimeKind, SupervisorSession, SupervisorSessionStatus, WorkItem,
+    WorkRun, WorkRunStatus, transition_work_run,
 };
 use xiezhi_hooks::HookRunner;
 use xiezhi_runtime::{
@@ -302,6 +302,17 @@ fn main() {
                 });
                 resolve_decision_or_exit(decision_id, &option_id);
             }
+            Some("dispatch") => {
+                let Some(id) = args.next() else {
+                    eprintln!("usage: xiezhi work dispatch <run-id>");
+                    std::process::exit(2);
+                };
+                let run_id = uuid::Uuid::parse_str(&id).unwrap_or_else(|error| {
+                    eprintln!("invalid run id: {error}");
+                    std::process::exit(2);
+                });
+                dispatch_work_run_or_exit(run_id);
+            }
             Some("show") => {
                 let Some(id) = args.next() else {
                     eprintln!("usage: xiezhi work show <run-id>");
@@ -391,6 +402,29 @@ fn main() {
                         graph.edges.len()
                     );
                 }
+                let agent_runs =
+                    store
+                        .list_agent_runs_for_work_run(run.id)
+                        .unwrap_or_else(|error| {
+                            eprintln!("failed to load agent runs: {error}");
+                            std::process::exit(1);
+                        });
+                println!("agent runs: {}", agent_runs.len());
+                for agent_run in agent_runs {
+                    println!(
+                        "- agent {} task:{} workspace:{} role:{:?} status:{:?} runtime:{:?} model:{}",
+                        agent_run.id,
+                        agent_run
+                            .execution_graph_node_id
+                            .map(|id| id.to_string())
+                            .unwrap_or_else(|| "<none>".to_string()),
+                        agent_run.workspace_id,
+                        agent_run.role,
+                        agent_run.status,
+                        agent_run.runtime,
+                        agent_run.model.as_deref().unwrap_or("<default>")
+                    );
+                }
                 println!("events: {}", events.len());
                 for event in events {
                     println!(
@@ -405,6 +439,7 @@ fn main() {
                 println!("  xiezhi work show <run-id>");
                 println!("  xiezhi work intake <run-id>");
                 println!("  xiezhi work decide <decision-id> <option-id>");
+                println!("  xiezhi work dispatch <run-id>");
             }
         },
         _ => {
@@ -416,6 +451,7 @@ fn main() {
             println!("  xiezhi work show <run-id>");
             println!("  xiezhi work intake <run-id>");
             println!("  xiezhi work decide <decision-id> <option-id>");
+            println!("  xiezhi work dispatch <run-id>");
             println!("  xiezhi workflow check [path]");
             println!("  xiezhi --version");
         }
@@ -641,6 +677,167 @@ fn resolve_decision_or_exit(decision_id: uuid::Uuid, option_id: &str) {
     println!("work run: {}", run.id);
     println!("status: {:?}", run.status);
     println!("pending decisions: {pending_count}");
+}
+
+fn dispatch_work_run_or_exit(run_id: uuid::Uuid) {
+    let workflow = load_workflow("XIEZHI.md").ok().unwrap_or_default();
+    let store = open_store_or_exit();
+    let run = store
+        .get_work_run(run_id)
+        .unwrap_or_else(|error| {
+            eprintln!("failed to load work run: {error}");
+            std::process::exit(1);
+        })
+        .unwrap_or_else(|| {
+            eprintln!("work run not found: {run_id}");
+            std::process::exit(1);
+        });
+    if run.status != WorkRunStatus::Planning {
+        eprintln!("work run is not ready for dispatch: {:?}", run.status);
+        std::process::exit(2);
+    }
+    let graphs = store
+        .list_execution_graphs_for_work_run(run.id)
+        .unwrap_or_else(|error| {
+            eprintln!("failed to load execution graphs: {error}");
+            std::process::exit(1);
+        });
+    let graph = graphs
+        .iter()
+        .rev()
+        .find(|graph| graph.status == "draft")
+        .or_else(|| graphs.last())
+        .unwrap_or_else(|| {
+            eprintln!(
+                "work run has no execution graph; run `xiezhi work intake {}` first",
+                run.id
+            );
+            std::process::exit(2);
+        });
+    let task_nodes = graph
+        .nodes
+        .iter()
+        .filter(|node| node.kind == GraphNodeKind::Task)
+        .collect::<Vec<_>>();
+    if task_nodes.is_empty() {
+        eprintln!("execution graph {} has no task nodes to dispatch", graph.id);
+        std::process::exit(2);
+    }
+
+    let workspace_manager =
+        WorkspaceManager::from_config(&workflow.workspace).unwrap_or_else(|error| {
+            eprintln!("failed to prepare workspace manager: {error}");
+            std::process::exit(1);
+        });
+    let supervisor_session = run.active_supervisor_session_id.and_then(|_| {
+        store
+            .list_supervisor_sessions_for_work_run(run.id)
+            .ok()
+            .and_then(|sessions| sessions.into_iter().last())
+    });
+    let runtime = supervisor_session
+        .as_ref()
+        .map(|session| session.runtime)
+        .unwrap_or_else(|| runtime_kind_from_workflow(workflow.agent_runtime.kind));
+    let model = supervisor_session
+        .as_ref()
+        .and_then(|session| session.model.clone())
+        .or_else(|| workflow.agent_runtime.model.clone());
+
+    let mut created = 0usize;
+    let mut skipped = 0usize;
+    for task_node in task_nodes {
+        if store
+            .get_agent_run_for_graph_node(run.id, task_node.id)
+            .unwrap_or_else(|error| {
+                eprintln!("failed to check existing agent run: {error}");
+                std::process::exit(1);
+            })
+            .is_some()
+        {
+            skipped += 1;
+            continue;
+        }
+
+        let workspace = workspace_manager
+            .create_agent_workspace(&run, task_node.id)
+            .unwrap_or_else(|error| {
+                eprintln!("failed to create agent workspace: {error}");
+                std::process::exit(1);
+            });
+        store.insert_workspace(&workspace).unwrap_or_else(|error| {
+            eprintln!("failed to persist agent workspace: {error}");
+            std::process::exit(1);
+        });
+        let agent_run = AgentRun {
+            id: uuid::Uuid::now_v7(),
+            work_run_id: run.id,
+            execution_graph_node_id: Some(task_node.id),
+            workspace_id: workspace.id,
+            runtime,
+            model: model.clone(),
+            role: AgentRole::Implementation,
+            status: AgentRunStatus::Planned,
+            started_at: time::OffsetDateTime::now_utc(),
+            ended_at: None,
+        };
+        store.insert_agent_run(&agent_run).unwrap_or_else(|error| {
+            eprintln!("failed to persist agent run: {error}");
+            std::process::exit(1);
+        });
+        store
+            .insert_event(&Event {
+                id: uuid::Uuid::now_v7(),
+                work_run_id: run.id,
+                actor: EventActor::XieZhi,
+                event_type: "agent_workspace_created".to_string(),
+                summary: format!("Created agent workspace for task {}.", task_node.title),
+                payload_json: Some(
+                    serde_json::json!({
+                        "execution_graph_id": graph.id,
+                        "execution_graph_node_id": task_node.id,
+                        "workspace_id": workspace.id,
+                        "workspace_path": workspace.path,
+                    })
+                    .to_string(),
+                ),
+                created_at: time::OffsetDateTime::now_utc(),
+            })
+            .unwrap_or_else(|error| {
+                eprintln!("failed to persist agent workspace event: {error}");
+                std::process::exit(1);
+            });
+        store
+            .insert_event(&Event {
+                id: uuid::Uuid::now_v7(),
+                work_run_id: run.id,
+                actor: EventActor::XieZhi,
+                event_type: "agent_run_planned".to_string(),
+                summary: format!("Planned agent run for task {}.", task_node.title),
+                payload_json: Some(
+                    serde_json::json!({
+                        "agent_run_id": agent_run.id,
+                        "execution_graph_node_id": task_node.id,
+                        "workspace_id": workspace.id,
+                        "runtime": format!("{:?}", agent_run.runtime),
+                        "model": agent_run.model,
+                        "role": format!("{:?}", agent_run.role),
+                    })
+                    .to_string(),
+                ),
+                created_at: time::OffsetDateTime::now_utc(),
+            })
+            .unwrap_or_else(|error| {
+                eprintln!("failed to persist agent run event: {error}");
+                std::process::exit(1);
+            });
+        created += 1;
+    }
+
+    println!("work run: {}", run.id);
+    println!("execution graph: {}", graph.id);
+    println!("created: {created}");
+    println!("skipped: {skipped}");
 }
 
 fn persist_structured_runtime_event_or_exit(

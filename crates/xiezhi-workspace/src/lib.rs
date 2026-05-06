@@ -65,6 +65,43 @@ impl WorkspaceManager {
 
         Ok(workspace)
     }
+
+    pub fn create_agent_workspace(
+        &self,
+        run: &WorkRun,
+        task_node_id: Uuid,
+    ) -> Result<Workspace, WorkspaceError> {
+        let path = self.root.join(format!("agent-{}-{}", run.id, task_node_id));
+        fs::create_dir_all(&path)?;
+
+        let now = OffsetDateTime::now_utc();
+        let workspace = Workspace {
+            id: Uuid::now_v7(),
+            work_run_id: run.id,
+            kind: WorkspaceKind::Agent,
+            path: path.to_string_lossy().to_string(),
+            base_ref: None,
+            status: WorkspaceStatus::Ready,
+            created_at: now,
+            updated_at: now,
+        };
+
+        let manifest = serde_json::json!({
+            "version": "v1",
+            "workspaceId": workspace.id,
+            "workRunId": workspace.work_run_id,
+            "executionGraphNodeId": task_node_id,
+            "kind": workspace.kind,
+            "status": workspace.status,
+            "createdAt": workspace.created_at,
+        });
+        fs::write(
+            path.join("xiezhi-workspace.json"),
+            serde_json::to_string_pretty(&manifest)?,
+        )?;
+
+        Ok(workspace)
+    }
 }
 
 pub fn expand_path(raw: &str) -> Result<PathBuf, WorkspaceError> {
@@ -101,6 +138,25 @@ mod tests {
                 .join("xiezhi-workspace.json")
                 .exists()
         );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn creates_agent_workspace_with_task_manifest() {
+        let root = std::env::temp_dir().join(format!("xiezhi-workspace-test-{}", Uuid::now_v7()));
+        let manager = WorkspaceManager { root: root.clone() };
+        let item = WorkItem::local_goal("build a pomodoro app");
+        let run = WorkRun::new(item.id, item.title);
+        let task_node_id = Uuid::now_v7();
+
+        let workspace = manager.create_agent_workspace(&run, task_node_id).unwrap();
+        let manifest_path = Path::new(&workspace.path).join("xiezhi-workspace.json");
+        let manifest = fs::read_to_string(manifest_path).unwrap();
+
+        assert_eq!(workspace.work_run_id, run.id);
+        assert_eq!(workspace.kind, WorkspaceKind::Agent);
+        assert!(workspace.path.contains(&format!("agent-{}-", run.id)));
+        assert!(manifest.contains(&task_node_id.to_string()));
         fs::remove_dir_all(root).unwrap();
     }
 }

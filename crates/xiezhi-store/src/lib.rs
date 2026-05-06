@@ -576,6 +576,48 @@ impl Store {
         Ok(())
     }
 
+    pub fn list_agent_runs_for_work_run(
+        &self,
+        work_run_id: Uuid,
+    ) -> Result<Vec<AgentRun>, StoreError> {
+        let mut statement = self.connection.prepare(
+            r#"
+            SELECT id, work_run_id, execution_graph_node_id, workspace_id, runtime, model, role, status, started_at, ended_at
+            FROM agent_runs
+            WHERE work_run_id = ?1
+            ORDER BY started_at ASC
+            "#,
+        )?;
+        let rows = statement.query_map(params![work_run_id.to_string()], |row| {
+            decode_agent_run_row(row)
+        })?;
+        rows.map(|row| Ok(row?)).collect()
+    }
+
+    pub fn get_agent_run_for_graph_node(
+        &self,
+        work_run_id: Uuid,
+        execution_graph_node_id: Uuid,
+    ) -> Result<Option<AgentRun>, StoreError> {
+        let mut statement = self.connection.prepare(
+            r#"
+            SELECT id, work_run_id, execution_graph_node_id, workspace_id, runtime, model, role, status, started_at, ended_at
+            FROM agent_runs
+            WHERE work_run_id = ?1 AND execution_graph_node_id = ?2
+            ORDER BY started_at ASC
+            LIMIT 1
+            "#,
+        )?;
+        let mut rows = statement.query(params![
+            work_run_id.to_string(),
+            execution_graph_node_id.to_string()
+        ])?;
+        let Some(row) = rows.next()? else {
+            return Ok(None);
+        };
+        Ok(Some(decode_agent_run_row(row)?))
+    }
+
     pub fn insert_changeset(&self, changeset: &ChangeSet) -> Result<(), StoreError> {
         self.connection.execute(
             r#"
@@ -770,6 +812,30 @@ where
     E: std::error::Error + Send + Sync + 'static,
 {
     rusqlite::Error::ToSqlConversionFailure(Box::new(error))
+}
+
+fn decode_agent_run_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AgentRun> {
+    let execution_graph_node_id: Option<String> = row.get(2)?;
+    let ended_at: Option<String> = row.get(9)?;
+    Ok(AgentRun {
+        id: parse_uuid(row.get::<_, String>(0)?).map_err(to_sql_error)?,
+        work_run_id: parse_uuid(row.get::<_, String>(1)?).map_err(to_sql_error)?,
+        execution_graph_node_id: execution_graph_node_id
+            .map(parse_uuid)
+            .transpose()
+            .map_err(to_sql_error)?,
+        workspace_id: parse_uuid(row.get::<_, String>(3)?).map_err(to_sql_error)?,
+        runtime: decode_runtime_kind(&row.get::<_, String>(4)?),
+        model: row.get(5)?,
+        role: decode_agent_role(&row.get::<_, String>(6)?),
+        status: decode_agent_run_status(&row.get::<_, String>(7)?),
+        started_at: decode_time(&row.get::<_, String>(8)?).map_err(to_sql_error)?,
+        ended_at: ended_at
+            .as_deref()
+            .map(decode_time)
+            .transpose()
+            .map_err(to_sql_error)?,
+    })
 }
 
 fn encode_time(value: OffsetDateTime) -> String {
@@ -985,6 +1051,17 @@ fn encode_agent_role(value: AgentRole) -> &'static str {
     }
 }
 
+fn decode_agent_role(value: &str) -> AgentRole {
+    match value {
+        "supervisor" => AgentRole::Supervisor,
+        "test" => AgentRole::Test,
+        "design" => AgentRole::Design,
+        "review" => AgentRole::Review,
+        "integration" => AgentRole::Integration,
+        _ => AgentRole::Implementation,
+    }
+}
+
 fn encode_agent_run_status(value: AgentRunStatus) -> &'static str {
     match value {
         AgentRunStatus::Planned => "planned",
@@ -992,6 +1069,16 @@ fn encode_agent_run_status(value: AgentRunStatus) -> &'static str {
         AgentRunStatus::Completed => "completed",
         AgentRunStatus::Failed => "failed",
         AgentRunStatus::Cancelled => "cancelled",
+    }
+}
+
+fn decode_agent_run_status(value: &str) -> AgentRunStatus {
+    match value {
+        "running" => AgentRunStatus::Running,
+        "completed" => AgentRunStatus::Completed,
+        "failed" => AgentRunStatus::Failed,
+        "cancelled" => AgentRunStatus::Cancelled,
+        _ => AgentRunStatus::Planned,
     }
 }
 
@@ -1186,7 +1273,7 @@ mod tests {
         let agent_run = AgentRun {
             id: Uuid::now_v7(),
             work_run_id: run.id,
-            execution_graph_node_id: None,
+            execution_graph_node_id: Some(Uuid::now_v7()),
             workspace_id: workspace.id,
             runtime: RuntimeKind::OpenCode,
             model: None,
@@ -1196,6 +1283,15 @@ mod tests {
             ended_at: Some(now),
         };
         store.insert_agent_run(&agent_run).unwrap();
+        assert_eq!(store.list_agent_runs_for_work_run(run.id).unwrap().len(), 1);
+        assert_eq!(
+            store
+                .get_agent_run_for_graph_node(run.id, agent_run.execution_graph_node_id.unwrap())
+                .unwrap()
+                .unwrap()
+                .id,
+            agent_run.id
+        );
 
         let changeset = ChangeSet {
             id: Uuid::now_v7(),
