@@ -1,8 +1,8 @@
 # XieZhi
 
-XieZhi is a local-first orchestration framework for autonomous software work.
+XieZhi is a local-first contract orchestration framework for autonomous work.
 
-It runs supervisor agents against work items in isolated workspaces, records product decisions and engineering proof, constrains drift with DAG/AST/scope evidence, and lets humans manage acceptance instead of supervising code generation.
+It lets humans and XieZhi co-manage work orders while a supervisor agent acts as the first responsible contractor. The supervisor recruits subagents, each subagent works in an isolated workspace, and XieZhi records decisions, contract DAGs, proof, domain constraints, and acceptance evidence.
 
 ## Direction
 
@@ -11,7 +11,7 @@ XieZhi is being redesigned as a Rust + Tauri application.
 - Rust core for orchestration, state machines, workspace isolation, runtime adapters, tracker integrations, proof collection, and durable storage.
 - Tauri desktop app for the local Work Console.
 - Agent runtimes such as OpenCode, Codex, and Claude Code as pluggable backends.
-- Workflow configuration inspired by Symphony and Baton, but with XieZhi-specific DAG/AST/scope/proof guardrails.
+- Workflow configuration inspired by Symphony and Baton, but with XieZhi-specific governance, delegation, contract DAG, domain constraint, and acceptance guardrails.
 
 ## User Experience
 
@@ -28,7 +28,7 @@ cargo run -p xiezhi-cli -- run "build a pomodoro app"
 cargo run -p xiezhi-cli -- workflow check XIEZHI.md
 ```
 
-`run` currently creates a local `WorkItem`, `WorkRun`, isolated `Workspace`, lifecycle hook evidence, a `SupervisorSession`, and a `xiezhi-supervisor-intake.md` prompt artifact inside the run workspace. It stops at `SupervisorIntake`; runtime process control and plan normalization are the next layer.
+`run` currently creates a local `WorkItem`, `WorkRun`, isolated run `Workspace`, lifecycle hook evidence, a `SupervisorSession`, and a `xiezhi-supervisor-intake.md` prompt artifact inside the run workspace.
 
 `workflow check` validates a workflow file with YAML front matter and supervisor instructions.
 
@@ -44,14 +44,15 @@ cargo run -p xiezhi-cli -- work decide <decision-id> <option-id>
 XieZhi should then:
 
 1. Create or load a work item.
-2. Create an isolated workspace.
+2. Create an isolated run workspace.
 3. Start a supervisor agent session.
 4. Ask the user only for product, architecture, UX, or acceptance decisions.
 5. Normalize the supervisor plan into an execution graph.
-6. Run implementation work through agent backends.
-7. Collect proof: checks, semantic diff, review, smoke tests, screenshots, app launch evidence, and promotion commits.
-8. Recover automatically from ordinary engineering blockers.
-9. Present final acceptance to the human.
+6. Materialize task nodes into isolated agent workspaces.
+7. Run implementation work through agent backends.
+8. Collect proof: checks, semantic diff, review, smoke tests, screenshots, app launch evidence, and promotion commits.
+9. Recover automatically from ordinary engineering blockers.
+10. Present final acceptance to the human.
 
 ## What XieZhi Is Not
 
@@ -61,13 +62,17 @@ XieZhi should then:
 - Not a product decision maker.
 - Not a generic CI system.
 
-XieZhi is the orchestration layer around autonomous implementation work.
+XieZhi is the governance and orchestration layer around autonomous work.
 
 ## Design Docs
 
 - [Architecture](docs/architecture.md)
 - [Data Model](docs/data-model.md)
+- [Governance](docs/governance.md)
+- [Workspace Isolation](docs/workspace-isolation.md)
+- [Contract DAG](docs/contract-dag.md)
 - [Workflow Spec](docs/workflow-spec.md)
 - [Runtime Backends](docs/runtime-backends.md)
 - [Work Run Lifecycle](docs/work-run-lifecycle.md)
+- [Symphony Comparison](docs/symphony-comparison.md)
 - [Roadmap](docs/roadmap.md)

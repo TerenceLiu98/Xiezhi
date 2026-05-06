@@ -34,7 +34,7 @@ The WorkItem has been accepted by XieZhi, but no workspace exists yet.
 
 ### workspace_ready
 
-Workspace is created and bootstrapped by workflow hooks.
+Run workspace is created and bootstrapped by workflow hooks.
 
 ### supervisor_intake
 
@@ -72,11 +72,20 @@ XieZhi validates:
 - scope declaration
 - proof requirements
 
+Planning includes materializing approved task nodes into isolated agent workspaces before execution.
+
 ### executing
 
-Agent runs modify isolated workspaces.
+Agent runs modify isolated agent workspaces.
 
 Execution may be sequential or parallel, but XieZhi treats parallelism as a declared supervisor plan bounded by workflow limits.
+
+Rules:
+
+- each subagent has its own agent workspace
+- no subagent writes directly to the target repository
+- no subagent writes to another subagent's workspace
+- task dependencies gate agent workspace creation and execution
 
 ### verifying
 
@@ -128,6 +137,7 @@ After process restart, XieZhi should be able to:
 - reload active WorkRuns
 - reconnect or restart supervisor sessions
 - inspect workspace status
+- inspect run, agent, and proof workspaces
 - continue recovery
 - show exact current state in the UI
 

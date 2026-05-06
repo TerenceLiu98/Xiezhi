@@ -10,7 +10,7 @@ A runtime backend should support:
 start_session(workspace, prompt, tools, policy) -> SessionId
 send_message(session_id, message) -> EventStream
 stop_session(session_id)
-run_task(workspace, assignment) -> AgentRunResult
+run_task(agent_workspace, assignment) -> AgentRunResult
 ```
 
 The Rust core normalizes backend events into XieZhi events.
@@ -24,7 +24,7 @@ Initial primary backend.
 Needed capabilities:
 
 - start long-running supervisor session
-- run implementation turns in workspace
+- run implementation turns in isolated agent workspaces
 - stream text/tool/progress events when possible
 - pass provider/model selection
 - apply workspace-scoped permissions
@@ -85,6 +85,24 @@ Backend-specific events should normalize into:
 
 The Tauri UI consumes normalized events, not backend-specific event formats.
 
+## Workspace Contract
+
+Runtime sessions are workspace-scoped.
+
+Supervisor intake uses the run workspace:
+
+```text
+RunWorkspace -> SupervisorSession
+```
+
+Subagent execution uses agent workspaces:
+
+```text
+ExecutionGraph task -> AgentWorkspace -> AgentRun -> ChangeSet
+```
+
+Backends must not write directly to the target repository or to another agent's workspace. XieZhi promotes accepted ChangeSets into the target repo or downstream base state.
+
 ## Current Skeleton
 
 The Rust skeleton does not launch runtime processes yet.
@@ -108,6 +126,8 @@ When intake extracts a `SupervisorHandoff v1` with `readyToNormalize=true`, XieZ
 - one task node per declared subagent plan
 
 This is intentionally minimal. The next layer should replace it with a stricter graph normalization pass that preserves dependencies, proof requirements, declared scope, and assignment metadata.
+
+After graph normalization, XieZhi should materialize task nodes into agent workspaces and AgentRuns before invoking subagent runtimes.
 
 ## Runtime Policy
 

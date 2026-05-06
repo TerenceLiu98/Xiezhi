@@ -2,21 +2,23 @@
 
 ## Product Thesis
 
-XieZhi helps a user manage autonomous software work instead of supervising an agent line by line.
+XieZhi is a local-first contract orchestration framework for autonomous work.
+
+The user and XieZhi co-manage a work order. The supervisor agent is the first responsible contractor. Subagents are recruited by the supervisor to complete scoped parts of the work. XieZhi records the contract, constrains execution through DAG/domain evidence, and manages acceptance.
 
 The core loop is:
 
 ```text
 WorkItem
   -> WorkRun
-  -> Workspace
+  -> RunWorkspace
   -> SupervisorSession
-  -> DecisionPoints
-  -> ExecutionGraph
-  -> AgentRuns
+  -> Governance / DecisionPoints
+  -> Contract ExecutionGraph
+  -> AgentWorkspace + AgentRun per task/subagent
   -> ChangeSets
   -> Proof
-  -> Promotion or Handoff
+  -> Promotion or Acceptance Handoff
 ```
 
 ## Stack
@@ -55,6 +57,56 @@ The Tauri app owns:
 
 The UI should not make orchestration decisions. It displays state and collects human decisions.
 
+## Responsibility Model
+
+### Human
+
+The human is the owner and final acceptance authority.
+
+The human may:
+
+- co-manage product, architecture, UX, and acceptance decisions
+- delegate decision authority within a declared charter
+- accept, reject, or request follow-up work
+
+### XieZhi
+
+XieZhi is the general contractor governance layer.
+
+XieZhi owns:
+
+- durable state
+- governance policy
+- decision recording
+- contract DAG validation
+- workspace isolation
+- proof and evidence collection
+- promotion and acceptance gates
+- UI/API for inspection and intervention
+
+XieZhi does not own product judgment. It requires agents to make judgment explicit and accountable.
+
+### Supervisor Agent
+
+The supervisor agent is the first responsible contractor.
+
+The supervisor owns:
+
+- intake and context exploration
+- assumptions and risk reporting
+- decision point declaration
+- delegated decision rationale
+- subagent recruitment plan
+- contract DAG proposal
+- progress reporting
+- recovery proposals
+
+### Subagents
+
+Subagents are task-specific execution workers recruited by the supervisor.
+
+Each subagent should run in its own isolated agent workspace. A subagent produces a ChangeSet and proof evidence, not direct writes to the target repository.
+
 ## Core Objects
 
 ### WorkItem
@@ -80,11 +132,18 @@ A WorkRun can be resumed, paused, cancelled, retried, archived, or completed.
 
 ### Workspace
 
-An isolated filesystem location for one WorkRun or AgentRun.
+An isolated filesystem location for coordination, execution, or proof.
+
+Workspace kinds:
+
+- `run`: supervisor coordination workspace for the WorkRun
+- `agent`: isolated subagent workspace for one AgentRun
+- `proof`: isolated verification/review/smoke workspace
 
 Workspace rules:
 
-- agents work inside assigned workspaces
+- supervisor intake and coordination happen in the run workspace
+- each subagent writes only inside its assigned agent workspace
 - parent repository writes are controlled by XieZhi
 - promotion is explicit
 - failed workspaces are retained for inspection
@@ -115,7 +174,7 @@ XieZhi owns:
 
 ### ExecutionGraph
 
-The normalized graph of work.
+The normalized contract graph declared by the supervisor.
 
 It can contain:
 
@@ -128,7 +187,17 @@ It can contain:
 - workspaces
 - changesets
 
-The graph is not a product judge. It is a contract between what the agent declared and what actually happened.
+The graph is not XieZhi's product plan. It is the supervisor's contract. XieZhi validates graph consistency, dependencies, scope declarations, workspace materialization, and proof requirements.
+
+Task nodes are materialized into:
+
+```text
+ExecutionGraph task node
+  -> AgentWorkspace
+  -> AgentRun
+  -> ChangeSet
+  -> Proof
+```
 
 ### Proof
 
@@ -146,6 +215,19 @@ Proof types:
 - promotion commit
 - tracker update
 
+## Domain Constraints
+
+AST evidence is one domain constraint adapter for software work. XieZhi should support other domain constraint adapters over time:
+
+- code AST and semantic diff
+- email thread and recipient policy
+- document structure and citation evidence
+- CRM entity and stage policy
+- calendar availability and scheduling rules
+- deployment, cost, and external side-effect controls
+
+The DAG is the cross-domain control surface. Domain adapters attach evidence to the DAG.
+
 ## Design Influence
 
 XieZhi should learn from:
@@ -153,5 +235,6 @@ XieZhi should learn from:
 - Symphony: managing implementation work rather than supervising agents.
 - Baton: workflow files, tracker polling, isolated workspaces, runtime adapters, hooks, and state APIs.
 
-XieZhi's differentiation is DAG/AST/scope/proof evidence as first-class orchestration data.
+XieZhi learns from Symphony's isolated workspace runner model, especially the idea that autonomous work should happen in controlled workspaces rather than directly in the target repository.
 
+XieZhi's differentiation is governance, delegation, contract DAGs, domain constraints, and acceptance evidence as first-class orchestration data.

@@ -34,17 +34,20 @@ Next:
 - persist workspace, supervisor session, decision point, proof, and changeset tables
 - move CLI argument parsing to a real command framework
 
-## Phase 2: Workspace Orchestration
+## Phase 2: Run and Agent Workspace Orchestration
 
-Goal: create and manage isolated workspaces.
+Goal: create and manage isolated run, agent, and proof workspaces.
 
 Deliverables:
 
 - workspace root config
-- workspace create/remove/archive
+- run workspace create/remove/archive
+- agent workspace create/remove/archive
+- proof workspace create/remove/archive
 - lifecycle hooks
 - command log evidence
 - safe path policy
+- graph task node materialization into AgentWorkspace + AgentRun
 
 ## Phase 3: Supervisor Runtime
 
@@ -61,12 +64,14 @@ Deliverables:
 
 ## Phase 4: Execution Graph and Proof
 
-Goal: normalize supervisor plans into graph and proof contracts.
+Goal: normalize supervisor plans into graph, workspace, and proof contracts.
 
 Deliverables:
 
 - ExecutionGraph model
 - dependency validation
+- task-to-AgentWorkspace materialization
+- AgentRun dispatch skeleton
 - scope declaration
 - command proof
 - changeset capture
@@ -98,7 +103,8 @@ xiezhi run "build a pomodoro app" --runtime opencode --ui
 The run should:
 
 - ask meaningful product/UX/validation decisions
-- create isolated workspace
+- create a run workspace for supervisor coordination
+- create isolated agent workspaces for subagent tasks
 - run supervisor and implementation agents
 - collect proof
 - recover automatically from engineering blockers

@@ -19,6 +19,10 @@ work:
 
 workspace:
   root: ~/.xiezhi/workspaces
+  run_prefix: run
+  agent_prefix: agent
+  proof_prefix: proof
+  base_policy: from_promoted_parent
   cleanup:
     completed: archive
     failed: retain
@@ -77,11 +81,20 @@ Defines where and how isolated workspaces are created.
 Important fields:
 
 - `root`
-- `template`
-- `after_create`
-- `before_remove`
+- `run_prefix`
+- `agent_prefix`
+- `proof_prefix`
+- `base_policy`
 - `cleanup.completed`
 - `cleanup.failed`
+
+Workspace policy should distinguish:
+
+- run workspace: supervisor coordination and intake
+- agent workspace: one subagent/task execution
+- proof workspace: isolated verification or review
+
+Subagents should not share a writable workspace.
 
 ### agent_runtime
 
@@ -106,7 +119,7 @@ Examples:
 - `max_recovery_attempts`
 - `command_timeout_ms`
 
-These are safety limits. The supervisor agent may propose subagent parallelism, but XieZhi validates it against these limits.
+These are safety limits. The supervisor agent may propose subagent parallelism, but XieZhi validates it against these limits. `max_concurrent_agent_runs` is an agent workspace concurrency ceiling, not XieZhi's planning brain.
 
 ### proof
 
@@ -122,7 +135,9 @@ Hooks allow the repository to customize lifecycle points.
 
 Potential hooks:
 
-- `after_workspace_create`
+- `after_run_workspace_create`
+- `after_agent_workspace_create`
+- `after_proof_workspace_create`
 - `before_supervisor_start`
 - `before_agent_run`
 - `after_agent_run`
@@ -133,6 +148,8 @@ Potential hooks:
 - `before_workspace_remove`
 
 Hooks are evidence-producing steps. Their command logs should be attached to the WorkRun.
+
+The current Rust skeleton uses `after_workspace_create` as a transitional hook name. It should be split into run/agent/proof workspace hooks as the workspace model matures.
 
 ## Protocol Policy
 
@@ -154,4 +171,5 @@ The workflow should not replace XieZhi's hard guardrails:
 - undeclared scope cannot promote
 - proof requirements must be satisfied
 - terminal states are durable
-
+- subagent writes are workspace-isolated
+- agent workspace promotion is explicit and evidence-backed

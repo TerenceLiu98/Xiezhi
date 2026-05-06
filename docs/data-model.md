@@ -2,7 +2,7 @@
 
 This document defines the first durable model for the Rust rewrite.
 
-The model is intentionally orchestration-first. Code graphs, AST nodes, and semantic diff return later as evidence attached to WorkRuns and Proofs.
+The model is contract-orchestration-first. Code graphs, AST nodes, and semantic diff are domain evidence attached to WorkRuns, ChangeSets, and Proofs. They are not the center of the system.
 
 ## Entity Overview
 
@@ -11,7 +11,9 @@ WorkItem
   1 -> many WorkRuns
 
 WorkRun
-  1 -> 1 active Workspace
+  1 -> 1 run Workspace
+  1 -> many agent Workspaces
+  1 -> many proof Workspaces
   1 -> many SupervisorSessions
   1 -> many DecisionPoints
   1 -> many ExecutionGraphs
@@ -19,6 +21,13 @@ WorkRun
   1 -> many ChangeSets
   1 -> many Proofs
   1 -> many Events
+
+ExecutionGraph task node
+  1 -> 0..many AgentRuns
+
+AgentRun
+  1 -> 1 agent Workspace
+  1 -> 0..1 ChangeSet
 ```
 
 ## WorkItem
@@ -101,9 +110,9 @@ Fields:
 
 Kinds:
 
-- `run`
-- `agent`
-- `proof`
+- `run`: supervisor coordination workspace for the WorkRun
+- `agent`: isolated workspace for one AgentRun/subagent task
+- `proof`: isolated verification, review, or smoke workspace
 
 Statuses:
 
@@ -116,9 +125,12 @@ Statuses:
 
 Rules:
 
-- agents write inside assigned workspaces
+- the supervisor works in the run workspace
+- every subagent writes inside one assigned agent workspace
+- proof collection can use proof workspaces when it needs isolation
 - promotion into target repo is a XieZhi-controlled operation
 - failed workspaces are retained by default
+- downstream agent workspaces should be created from accepted/promoted upstream state
 
 ## SupervisorSession
 
@@ -144,6 +156,8 @@ Statuses:
 - `failed`
 
 The supervisor session owns product and implementation judgment. XieZhi owns orchestration safety and evidence.
+
+The supervisor is the first responsible contractor. XieZhi should not silently rewrite the supervisor's plan; it should request a corrected proposal when the plan conflicts with governance, dependencies, workspace policy, or proof requirements.
 
 ## DecisionPoint
 
@@ -174,7 +188,7 @@ Ordinary engineering blockers should go to recovery, not to the user.
 
 ## ExecutionGraph
 
-An ExecutionGraph is the normalized work structure declared by the supervisor.
+An ExecutionGraph is the normalized contract structure declared by the supervisor.
 
 Fields:
 
@@ -207,9 +221,18 @@ Edge kinds:
 
 The graph is a contract. It does not decide whether a product file should exist; it records what the supervisor declared and what reality produced.
 
+Rules:
+
+- task nodes represent delegable units of responsibility
+- task nodes can be materialized into AgentRuns
+- each AgentRun receives an isolated agent Workspace
+- dependencies gate workspace creation and execution
+- scope/proof declarations are validated against ChangeSets and Proofs
+- graph revisions are explicit supervisor proposals, not hidden XieZhi rewrites
+
 ## AgentRun
 
-An AgentRun is one backend execution against a workspace.
+An AgentRun is one backend execution against one agent workspace.
 
 Fields:
 
@@ -232,6 +255,13 @@ Roles:
 - `design`
 - `review`
 - `integration`
+
+Rules:
+
+- normal subagent AgentRuns use `WorkspaceKind::Agent`
+- the run workspace is for supervisor coordination, not shared writes
+- an AgentRun should be tied to an ExecutionGraph task node whenever possible
+- agent parallelism is proposed by the supervisor and bounded by workflow limits
 
 ## ChangeSet
 
@@ -256,6 +286,13 @@ Statuses:
 - `held`
 - `promoted`
 - `rejected`
+
+Rules:
+
+- ChangeSets are captured from agent workspaces
+- promotion into the target repo is controlled by XieZhi
+- overlapping ChangeSets require conflict evidence and supervisor recovery
+- unpromoted ChangeSets do not unlock downstream work that depends on promoted state
 
 ## Proof
 
@@ -316,4 +353,3 @@ Actors:
 - `tracker`
 
 The Work Console should be renderable from WorkRun state plus Events.
-
