@@ -330,6 +330,17 @@ fn main() {
                 });
                 step_work_run_or_exit(run_id);
             }
+            Some("accept") => {
+                let Some(id) = args.next() else {
+                    eprintln!("usage: xiezhi work accept <run-id>");
+                    std::process::exit(2);
+                };
+                let run_id = uuid::Uuid::parse_str(&id).unwrap_or_else(|error| {
+                    eprintln!("invalid run id: {error}");
+                    std::process::exit(2);
+                });
+                accept_work_run_or_exit(run_id);
+            }
             Some("show") => {
                 let Some(id) = args.next() else {
                     eprintln!("usage: xiezhi work show <run-id>");
@@ -499,6 +510,7 @@ fn main() {
                 println!("  xiezhi work decide <decision-id> <option-id>");
                 println!("  xiezhi work dispatch <run-id>");
                 println!("  xiezhi work step <run-id>");
+                println!("  xiezhi work accept <run-id>");
             }
         },
         Some("agent") => match args.next().as_deref() {
@@ -563,6 +575,7 @@ fn main() {
             println!("  xiezhi work decide <decision-id> <option-id>");
             println!("  xiezhi work dispatch <run-id>");
             println!("  xiezhi work step <run-id>");
+            println!("  xiezhi work accept <run-id>");
             println!("  xiezhi agent run <agent-run-id>");
             println!("  xiezhi proof run <changeset-id>");
             println!("  xiezhi changeset promote <changeset-id>");
@@ -811,11 +824,67 @@ fn step_work_run_or_exit(run_id: uuid::Uuid) {
                 "all latest graph task nodes are dispatched, with no planned agent run or promotable changeset left"
             );
         }
+        WorkRunStatus::HumanAcceptance => {
+            println!("next action: human acceptance");
+            println!(
+                "run `xiezhi work accept {}` when the outcome is acceptable",
+                run.id
+            );
+        }
         _ => {
             println!("next action: none");
             println!("work run status: {:?}", run.status);
         }
     }
+}
+
+fn accept_work_run_or_exit(run_id: uuid::Uuid) {
+    let store = open_store_or_exit();
+    let mut run = store
+        .get_work_run(run_id)
+        .unwrap_or_else(|error| {
+            eprintln!("failed to load work run: {error}");
+            std::process::exit(1);
+        })
+        .unwrap_or_else(|| {
+            eprintln!("work run not found: {run_id}");
+            std::process::exit(1);
+        });
+    if run.status != WorkRunStatus::HumanAcceptance {
+        eprintln!("work run is not ready for acceptance: {:?}", run.status);
+        std::process::exit(2);
+    }
+    transition_work_run(&mut run, WorkRunStatus::Completed).unwrap_or_else(|error| {
+        eprintln!("failed to complete work run: {error}");
+        std::process::exit(1);
+    });
+    store.update_work_run(&run).unwrap_or_else(|error| {
+        eprintln!("failed to update work run: {error}");
+        std::process::exit(1);
+    });
+    store
+        .insert_event(&Event {
+            id: uuid::Uuid::now_v7(),
+            work_run_id: run.id,
+            actor: EventActor::User,
+            event_type: "work_run_accepted".to_string(),
+            summary: "Human accepted the promoted outcome.".to_string(),
+            payload_json: Some(
+                serde_json::json!({
+                    "status": format!("{:?}", run.status),
+                    "completed_at": run.completed_at,
+                })
+                .to_string(),
+            ),
+            created_at: time::OffsetDateTime::now_utc(),
+        })
+        .unwrap_or_else(|error| {
+            eprintln!("failed to persist acceptance event: {error}");
+            std::process::exit(1);
+        });
+
+    println!("work run: {}", run.id);
+    println!("status: {:?}", run.status);
 }
 
 fn resolve_decision_or_exit(decision_id: uuid::Uuid, option_id: &str) {

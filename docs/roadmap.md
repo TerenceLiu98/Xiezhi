@@ -51,6 +51,7 @@ Deliverables:
 - one-step local orchestration driver for intake, dispatch, and planned agent execution
 - workflow-declared command proof for captured ChangeSets
 - verified ChangeSet promotion into the current target directory
+- explicit human acceptance close-out for promoted work
 
 ## Phase 3: Supervisor Runtime
 

@@ -156,6 +156,9 @@ safe next action from durable state:
 
 It does not auto-resolve human governance decisions.
 
+`xiezhi work accept <run-id>` closes a run from `HumanAcceptance` to `Completed`. This keeps final
+acceptance explicitly human-controlled in the CLI skeleton.
+
 ## Runtime Policy
 
 Runtime permissions are workspace-scoped by default.
