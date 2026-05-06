@@ -1,9 +1,12 @@
 use std::env;
 
-use xiezhi_core::{Event, EventActor, WorkItem, WorkRun, WorkRunStatus, transition_work_run};
+use xiezhi_core::{
+    Event, EventActor, RuntimeKind, SupervisorSession, SupervisorSessionStatus, WorkItem, WorkRun,
+    WorkRunStatus, transition_work_run,
+};
 use xiezhi_hooks::HookRunner;
 use xiezhi_store::Store;
-use xiezhi_workflow::load_workflow;
+use xiezhi_workflow::{AgentRuntimeKind, load_workflow};
 use xiezhi_workspace::WorkspaceManager;
 
 const STATE_PATH: &str = ".xiezhi/state.sqlite";
@@ -88,32 +91,13 @@ fn main() {
                     std::process::exit(1);
                 });
             if let Some(command) = workflow.hooks.after_workspace_create.as_deref() {
-                let hook_output =
-                    HookRunner::run("after_workspace_create", command, &workspace.path)
-                        .unwrap_or_else(|error| {
-                            eprintln!("failed to run after_workspace_create hook: {error}");
-                            std::process::exit(1);
-                        });
-                let hook_success = hook_output.success();
-                let hook_payload = serde_json::to_string(&hook_output).unwrap_or_else(|error| {
-                    eprintln!("failed to encode hook evidence: {error}");
-                    std::process::exit(1);
-                });
-                store
-                    .insert_event(&Event {
-                        id: uuid::Uuid::now_v7(),
-                        work_run_id: run.id,
-                        actor: EventActor::XieZhi,
-                        event_type: "hook_after_workspace_create".to_string(),
-                        summary: hook_output.summary(),
-                        payload_json: Some(hook_payload),
-                        created_at: time::OffsetDateTime::now_utc(),
-                    })
-                    .unwrap_or_else(|error| {
-                        eprintln!("failed to persist hook event: {error}");
-                        std::process::exit(1);
-                    });
-                if !hook_success {
+                if !run_lifecycle_hook_or_exit(
+                    &store,
+                    run.id,
+                    "after_workspace_create",
+                    command,
+                    &workspace.path,
+                ) {
                     transition_work_run(&mut run, WorkRunStatus::Failed).unwrap_or_else(|error| {
                         eprintln!("failed to mark work run failed: {error}");
                         std::process::exit(1);
@@ -124,11 +108,94 @@ fn main() {
                     });
                 }
             }
+            if !run.status.is_terminal() {
+                if let Some(command) = workflow.hooks.before_supervisor_start.as_deref() {
+                    if !run_lifecycle_hook_or_exit(
+                        &store,
+                        run.id,
+                        "before_supervisor_start",
+                        command,
+                        &workspace.path,
+                    ) {
+                        transition_work_run(&mut run, WorkRunStatus::Failed).unwrap_or_else(
+                            |error| {
+                                eprintln!("failed to mark work run failed: {error}");
+                                std::process::exit(1);
+                            },
+                        );
+                        store.update_work_run(&run).unwrap_or_else(|error| {
+                            eprintln!("failed to update failed work run: {error}");
+                            std::process::exit(1);
+                        });
+                    }
+                }
+            }
+            if !run.status.is_terminal() {
+                let supervisor_session = SupervisorSession {
+                    id: uuid::Uuid::now_v7(),
+                    work_run_id: run.id,
+                    runtime: runtime_kind_from_workflow(workflow.agent_runtime.kind),
+                    model: workflow.agent_runtime.model.clone(),
+                    status: SupervisorSessionStatus::Running,
+                    started_at: time::OffsetDateTime::now_utc(),
+                    ended_at: None,
+                    last_event_id: None,
+                };
+                store
+                    .insert_supervisor_session(&supervisor_session)
+                    .unwrap_or_else(|error| {
+                        eprintln!("failed to persist supervisor session: {error}");
+                        std::process::exit(1);
+                    });
+                run.active_supervisor_session_id = Some(supervisor_session.id);
+                transition_work_run(&mut run, WorkRunStatus::SupervisorIntake).unwrap_or_else(
+                    |error| {
+                        eprintln!("failed to transition work run: {error}");
+                        std::process::exit(1);
+                    },
+                );
+                store.update_work_run(&run).unwrap_or_else(|error| {
+                    eprintln!("failed to update work run: {error}");
+                    std::process::exit(1);
+                });
+                store
+                    .insert_event(&Event {
+                        id: uuid::Uuid::now_v7(),
+                        work_run_id: run.id,
+                        actor: EventActor::XieZhi,
+                        event_type: "supervisor_session_started".to_string(),
+                        summary: format!(
+                            "Started supervisor intake with {:?}.",
+                            supervisor_session.runtime
+                        ),
+                        payload_json: Some(
+                            serde_json::json!({
+                                "supervisor_session_id": supervisor_session.id,
+                                "runtime": format!("{:?}", supervisor_session.runtime),
+                                "model": supervisor_session.model,
+                                "command": workflow.agent_runtime.command,
+                                "instructions_present": !workflow.instructions.trim().is_empty(),
+                            })
+                            .to_string(),
+                        ),
+                        created_at: time::OffsetDateTime::now_utc(),
+                    })
+                    .unwrap_or_else(|error| {
+                        eprintln!("failed to persist supervisor event: {error}");
+                        std::process::exit(1);
+                    });
+            }
             println!("created work item: {}", item.id);
             println!("created work run: {}", run.id);
             println!("workspace: {}", workspace.path);
             println!("status: {:?}", run.status);
+            if let Some(supervisor_session_id) = run.active_supervisor_session_id {
+                println!("supervisor session: {supervisor_session_id}");
+            }
             println!("workflow runtime: {:?}", workflow.agent_runtime.kind);
+            if let Some(model) = workflow.agent_runtime.model {
+                println!("workflow model: {model}");
+            }
             println!("workflow workspace root: {}", workflow.workspace.root);
         }
         Some("workflow") => match args.next().as_deref() {
@@ -195,6 +262,24 @@ fn main() {
                 println!("work run: {}", run.id);
                 println!("goal: {}", run.goal);
                 println!("status: {:?}", run.status);
+                if let Some(supervisor_session_id) = run.active_supervisor_session_id {
+                    println!("active supervisor session: {supervisor_session_id}");
+                }
+                let supervisor_sessions = store
+                    .list_supervisor_sessions_for_work_run(run.id)
+                    .unwrap_or_else(|error| {
+                        eprintln!("failed to load supervisor sessions: {error}");
+                        std::process::exit(1);
+                    });
+                println!("supervisor sessions: {}", supervisor_sessions.len());
+                for session in supervisor_sessions {
+                    println!(
+                        "- supervisor {:?} {:?} model:{}",
+                        session.runtime,
+                        session.status,
+                        session.model.as_deref().unwrap_or("<default>")
+                    );
+                }
                 println!("events: {}", events.len());
                 for event in events {
                     println!(
@@ -227,4 +312,45 @@ fn open_store_or_exit() -> Store {
         eprintln!("failed to open local state store: {error}");
         std::process::exit(1);
     })
+}
+
+fn run_lifecycle_hook_or_exit(
+    store: &Store,
+    work_run_id: uuid::Uuid,
+    name: &str,
+    command: &str,
+    cwd: &str,
+) -> bool {
+    let hook_output = HookRunner::run(name, command, cwd).unwrap_or_else(|error| {
+        eprintln!("failed to run {name} hook: {error}");
+        std::process::exit(1);
+    });
+    let success = hook_output.success();
+    let payload = serde_json::to_string(&hook_output).unwrap_or_else(|error| {
+        eprintln!("failed to encode hook evidence: {error}");
+        std::process::exit(1);
+    });
+    store
+        .insert_event(&Event {
+            id: uuid::Uuid::now_v7(),
+            work_run_id,
+            actor: EventActor::XieZhi,
+            event_type: format!("hook_{name}"),
+            summary: hook_output.summary(),
+            payload_json: Some(payload),
+            created_at: time::OffsetDateTime::now_utc(),
+        })
+        .unwrap_or_else(|error| {
+            eprintln!("failed to persist hook event: {error}");
+            std::process::exit(1);
+        });
+    success
+}
+
+fn runtime_kind_from_workflow(kind: AgentRuntimeKind) -> RuntimeKind {
+    match kind {
+        AgentRuntimeKind::OpenCode => RuntimeKind::OpenCode,
+        AgentRuntimeKind::Codex => RuntimeKind::Codex,
+        AgentRuntimeKind::ClaudeCode => RuntimeKind::ClaudeCode,
+    }
 }

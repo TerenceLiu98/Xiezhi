@@ -28,7 +28,16 @@ cargo run -p xiezhi-cli -- run "build a pomodoro app"
 cargo run -p xiezhi-cli -- workflow check XIEZHI.md
 ```
 
-`run` creates a local `WorkItem`, `WorkRun`, and audit `Event` in `.xiezhi/state.sqlite`. `workflow check` validates a workflow file with YAML front matter and supervisor instructions.
+`run` currently creates a local `WorkItem`, `WorkRun`, isolated `Workspace`, lifecycle hook evidence, and a `SupervisorSession` in `.xiezhi/state.sqlite`. It stops at `SupervisorIntake`; runtime process control and plan normalization are the next layer.
+
+`workflow check` validates a workflow file with YAML front matter and supervisor instructions.
+
+Useful inspection commands:
+
+```bash
+cargo run -p xiezhi-cli -- work list
+cargo run -p xiezhi-cli -- work show <run-id>
+```
 
 XieZhi should then:
 

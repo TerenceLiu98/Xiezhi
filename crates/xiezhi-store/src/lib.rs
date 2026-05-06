@@ -329,6 +329,42 @@ impl Store {
         Ok(())
     }
 
+    pub fn list_supervisor_sessions_for_work_run(
+        &self,
+        work_run_id: Uuid,
+    ) -> Result<Vec<SupervisorSession>, StoreError> {
+        let mut statement = self.connection.prepare(
+            r#"
+            SELECT id, work_run_id, runtime, model, status, started_at, ended_at, last_event_id
+            FROM supervisor_sessions
+            WHERE work_run_id = ?1
+            ORDER BY started_at ASC
+            "#,
+        )?;
+        let rows = statement.query_map(params![work_run_id.to_string()], |row| {
+            let ended_at: Option<String> = row.get(6)?;
+            let last_event_id: Option<String> = row.get(7)?;
+            Ok(SupervisorSession {
+                id: parse_uuid(row.get::<_, String>(0)?).map_err(to_sql_error)?,
+                work_run_id: parse_uuid(row.get::<_, String>(1)?).map_err(to_sql_error)?,
+                runtime: decode_runtime_kind(&row.get::<_, String>(2)?),
+                model: row.get(3)?,
+                status: decode_supervisor_session_status(&row.get::<_, String>(4)?),
+                started_at: decode_time(&row.get::<_, String>(5)?).map_err(to_sql_error)?,
+                ended_at: ended_at
+                    .as_deref()
+                    .map(decode_time)
+                    .transpose()
+                    .map_err(to_sql_error)?,
+                last_event_id: last_event_id
+                    .map(parse_uuid)
+                    .transpose()
+                    .map_err(to_sql_error)?,
+            })
+        })?;
+        rows.map(|row| Ok(row?)).collect()
+    }
+
     pub fn insert_decision_point(&self, decision: &DecisionPoint) -> Result<(), StoreError> {
         self.connection.execute(
             r#"
@@ -733,6 +769,14 @@ fn encode_runtime_kind(value: RuntimeKind) -> &'static str {
     }
 }
 
+fn decode_runtime_kind(value: &str) -> RuntimeKind {
+    match value {
+        "codex" => RuntimeKind::Codex,
+        "claude_code" => RuntimeKind::ClaudeCode,
+        _ => RuntimeKind::OpenCode,
+    }
+}
+
 fn encode_supervisor_session_status(value: SupervisorSessionStatus) -> &'static str {
     match value {
         SupervisorSessionStatus::Starting => "starting",
@@ -740,6 +784,16 @@ fn encode_supervisor_session_status(value: SupervisorSessionStatus) -> &'static 
         SupervisorSessionStatus::Waiting => "waiting",
         SupervisorSessionStatus::Stopped => "stopped",
         SupervisorSessionStatus::Failed => "failed",
+    }
+}
+
+fn decode_supervisor_session_status(value: &str) -> SupervisorSessionStatus {
+    match value {
+        "running" => SupervisorSessionStatus::Running,
+        "waiting" => SupervisorSessionStatus::Waiting,
+        "stopped" => SupervisorSessionStatus::Stopped,
+        "failed" => SupervisorSessionStatus::Failed,
+        _ => SupervisorSessionStatus::Starting,
     }
 }
 
@@ -890,6 +944,13 @@ mod tests {
                 last_event_id: None,
             })
             .unwrap();
+        assert_eq!(
+            store
+                .list_supervisor_sessions_for_work_run(run.id)
+                .unwrap()
+                .len(),
+            1
+        );
 
         store
             .insert_decision_point(&DecisionPoint {

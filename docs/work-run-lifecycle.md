@@ -40,6 +40,13 @@ Workspace is created and bootstrapped by workflow hooks.
 
 The supervisor agent explores context, reports observations, and declares decision points if needed.
 
+Current skeleton behavior:
+
+- creates a durable `SupervisorSession`
+- records the selected runtime and model
+- transitions the WorkRun to `supervisor_intake`
+- does not yet launch or reconnect the runtime process
+
 ### waiting_for_decision
 
 XieZhi pauses only for user-facing decisions:
@@ -132,4 +139,3 @@ Cancellation should:
 - preserve workspace by default
 - mark WorkRun terminal
 - avoid partial promotion
-
