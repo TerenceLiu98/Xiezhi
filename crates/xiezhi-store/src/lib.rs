@@ -239,6 +239,31 @@ impl Store {
         Ok(())
     }
 
+    pub fn update_work_run(&self, run: &WorkRun) -> Result<(), StoreError> {
+        self.connection.execute(
+            r#"
+            UPDATE work_runs
+            SET status = ?2,
+                goal = ?3,
+                workspace_id = ?4,
+                active_supervisor_session_id = ?5,
+                updated_at = ?6,
+                completed_at = ?7
+            WHERE id = ?1
+            "#,
+            params![
+                run.id.to_string(),
+                encode_work_run_status(run.status),
+                run.goal,
+                run.workspace_id.map(|id| id.to_string()),
+                run.active_supervisor_session_id.map(|id| id.to_string()),
+                encode_time(run.updated_at),
+                run.completed_at.map(encode_time),
+            ],
+        )?;
+        Ok(())
+    }
+
     pub fn insert_event(&self, event: &Event) -> Result<(), StoreError> {
         self.connection.execute(
             r#"

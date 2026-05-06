@@ -2,6 +2,7 @@
 members = [
   "crates/xiezhi-core",
   "crates/xiezhi-store",
+  "crates/xiezhi-workspace",
   "crates/xiezhi-workflow",
   "crates/xiezhi-cli"
 ]
@@ -20,6 +21,8 @@ time = { version = "0.3", features = ["serde", "formatting", "parsing"] }
 uuid = { version = "1.12", features = ["serde", "v7"] }
 rusqlite = { version = "0.33", features = ["bundled", "uuid", "time"] }
 serde_yaml = "0.9"
+dirs = "6.0"
 xiezhi-core = { path = "crates/xiezhi-core" }
 xiezhi-store = { path = "crates/xiezhi-store" }
+xiezhi-workspace = { path = "crates/xiezhi-workspace" }
 xiezhi-workflow = { path = "crates/xiezhi-workflow" }

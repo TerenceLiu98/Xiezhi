@@ -1,8 +1,9 @@
 use std::env;
 
-use xiezhi_core::{Event, EventActor, WorkItem, WorkRun};
+use xiezhi_core::{Event, EventActor, WorkItem, WorkRun, WorkRunStatus, transition_work_run};
 use xiezhi_store::Store;
 use xiezhi_workflow::load_workflow;
+use xiezhi_workspace::WorkspaceManager;
 
 const STATE_PATH: &str = ".xiezhi/state.sqlite";
 
@@ -18,19 +19,43 @@ fn main() {
                 eprintln!("usage: xiezhi run <goal>");
                 std::process::exit(2);
             }
-            let workflow = load_workflow("XIEZHI.md").ok();
+            let workflow = load_workflow("XIEZHI.md").ok().unwrap_or_default();
             let store = Store::open(STATE_PATH).unwrap_or_else(|error| {
                 eprintln!("failed to open local state store: {error}");
                 std::process::exit(1);
             });
             let item = WorkItem::local_goal(goal);
-            let run = WorkRun::new(item.id, item.title.clone());
+            let mut run = WorkRun::new(item.id, item.title.clone());
             store.insert_work_item(&item).unwrap_or_else(|error| {
                 eprintln!("failed to persist work item: {error}");
                 std::process::exit(1);
             });
             store.insert_work_run(&run).unwrap_or_else(|error| {
                 eprintln!("failed to persist work run: {error}");
+                std::process::exit(1);
+            });
+            let workspace_manager = WorkspaceManager::from_config(&workflow.workspace)
+                .unwrap_or_else(|error| {
+                    eprintln!("failed to prepare workspace manager: {error}");
+                    std::process::exit(1);
+                });
+            let workspace = workspace_manager
+                .create_run_workspace(&run)
+                .unwrap_or_else(|error| {
+                    eprintln!("failed to create run workspace: {error}");
+                    std::process::exit(1);
+                });
+            store.insert_workspace(&workspace).unwrap_or_else(|error| {
+                eprintln!("failed to persist workspace: {error}");
+                std::process::exit(1);
+            });
+            run.workspace_id = Some(workspace.id);
+            transition_work_run(&mut run, WorkRunStatus::WorkspaceReady).unwrap_or_else(|error| {
+                eprintln!("failed to transition work run: {error}");
+                std::process::exit(1);
+            });
+            store.update_work_run(&run).unwrap_or_else(|error| {
+                eprintln!("failed to update work run: {error}");
                 std::process::exit(1);
             });
             store
@@ -47,15 +72,26 @@ fn main() {
                     eprintln!("failed to persist event: {error}");
                     std::process::exit(1);
                 });
+            store
+                .insert_event(&Event {
+                    id: uuid::Uuid::now_v7(),
+                    work_run_id: run.id,
+                    actor: EventActor::XieZhi,
+                    event_type: "workspace_ready".to_string(),
+                    summary: format!("Created run workspace at {}.", workspace.path),
+                    payload_json: None,
+                    created_at: time::OffsetDateTime::now_utc(),
+                })
+                .unwrap_or_else(|error| {
+                    eprintln!("failed to persist event: {error}");
+                    std::process::exit(1);
+                });
             println!("created work item: {}", item.id);
             println!("created work run: {}", run.id);
+            println!("workspace: {}", workspace.path);
             println!("status: {:?}", run.status);
-            if let Some(workflow) = workflow {
-                println!("workflow runtime: {:?}", workflow.agent_runtime.kind);
-                println!("workflow workspace root: {}", workflow.workspace.root);
-            } else {
-                println!("workflow: default");
-            }
+            println!("workflow runtime: {:?}", workflow.agent_runtime.kind);
+            println!("workflow workspace root: {}", workflow.workspace.root);
         }
         Some("workflow") => match args.next().as_deref() {
             Some("check") => {
