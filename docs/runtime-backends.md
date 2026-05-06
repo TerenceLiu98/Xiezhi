@@ -99,6 +99,8 @@ The Rust skeleton does not launch runtime processes yet.
 
 The next backend step is to feed the intake prompt to the selected runtime, capture the returned event stream, and persist those normalized objects as store events and orchestration entities.
 
+`xiezhi work intake <run-id>` is the current explicit command for that backend smoke path. It runs the configured command in the run workspace with the supervisor prompt on stdin, records raw stdout/stderr, and updates WorkRun state when a decision point or ready handoff is extracted.
+
 ## Runtime Policy
 
 Runtime permissions are workspace-scoped by default.

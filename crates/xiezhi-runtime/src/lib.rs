@@ -1,4 +1,9 @@
-use std::{fs, path::Path};
+use std::{
+    fs,
+    io::{ErrorKind, Write},
+    path::Path,
+    process::{Command, Stdio},
+};
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -10,6 +15,60 @@ pub enum RuntimeError {
     Io(#[from] std::io::Error),
     #[error("json error: {0}")]
     Json(#[from] serde_json::Error),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RuntimeCommandOutput {
+    pub command: String,
+    pub exit_code: Option<i32>,
+    pub stdout: String,
+    pub stderr: String,
+    pub structured_events: Vec<RuntimeStructuredEvent>,
+}
+
+impl RuntimeCommandOutput {
+    pub fn success(&self) -> bool {
+        self.exit_code == Some(0)
+    }
+}
+
+pub fn run_supervisor_intake_command(
+    command: &str,
+    cwd: impl AsRef<Path>,
+    prompt: &str,
+    model: Option<&str>,
+) -> Result<RuntimeCommandOutput, RuntimeError> {
+    let mut child = Command::new("sh")
+        .arg("-c")
+        .arg(command)
+        .current_dir(cwd)
+        .env("XIEZHI_SUPERVISOR_PROMPT", prompt)
+        .env("XIEZHI_RUNTIME_MODEL", model.unwrap_or(""))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+
+    if let Some(stdin) = child.stdin.as_mut() {
+        match stdin.write_all(prompt.as_bytes()) {
+            Ok(()) => {}
+            Err(error) if error.kind() == ErrorKind::BrokenPipe => {}
+            Err(error) => return Err(error.into()),
+        }
+    }
+
+    let output = child.wait_with_output()?;
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let structured_events = extract_structured_events(&format!("{stdout}\n{stderr}"));
+
+    Ok(RuntimeCommandOutput {
+        command: command.to_string(),
+        exit_code: output.status.code(),
+        stdout,
+        stderr,
+        structured_events,
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -349,5 +408,31 @@ Continuing after decision.
         let output = r#"{"type":"unknown","version":"v1"}"#;
 
         assert!(extract_structured_events(output).is_empty());
+    }
+
+    #[test]
+    fn runs_supervisor_intake_command_and_extracts_events() {
+        let output = run_supervisor_intake_command(
+            r#"printf '%s\n' '{"version":"v1","type":"progress_report","phase":"planning","summary":"Planning.","currentTaskId":null,"executionGroup":null,"subagents":[],"risks":[],"nextAction":"handoff"}'"#,
+            ".",
+            "hello supervisor",
+            Some("provider/model"),
+        )
+        .unwrap();
+
+        assert!(output.success());
+        assert_eq!(output.structured_events.len(), 1);
+        assert!(matches!(
+            output.structured_events[0],
+            RuntimeStructuredEvent::AgentProgressReport(_)
+        ));
+    }
+
+    #[test]
+    fn sends_prompt_to_runtime_stdin() {
+        let output = run_supervisor_intake_command("cat", ".", "hello supervisor", None).unwrap();
+
+        assert!(output.success());
+        assert_eq!(output.stdout, "hello supervisor");
     }
 }

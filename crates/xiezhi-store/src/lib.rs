@@ -307,6 +307,30 @@ impl Store {
         Ok(())
     }
 
+    pub fn get_workspace(&self, id: Uuid) -> Result<Option<Workspace>, StoreError> {
+        let mut statement = self.connection.prepare(
+            r#"
+            SELECT id, work_run_id, kind, path, base_ref, status, created_at, updated_at
+            FROM workspaces
+            WHERE id = ?1
+            "#,
+        )?;
+        let mut rows = statement.query(params![id.to_string()])?;
+        let Some(row) = rows.next()? else {
+            return Ok(None);
+        };
+        Ok(Some(Workspace {
+            id: parse_uuid(row.get::<_, String>(0)?)?,
+            work_run_id: parse_uuid(row.get::<_, String>(1)?)?,
+            kind: decode_workspace_kind(&row.get::<_, String>(2)?),
+            path: row.get(3)?,
+            base_ref: row.get(4)?,
+            status: decode_workspace_status(&row.get::<_, String>(5)?),
+            created_at: decode_time(&row.get::<_, String>(6)?)?,
+            updated_at: decode_time(&row.get::<_, String>(7)?)?,
+        }))
+    }
+
     pub fn insert_supervisor_session(&self, session: &SupervisorSession) -> Result<(), StoreError> {
         self.connection.execute(
             r#"
@@ -387,6 +411,41 @@ impl Store {
             ],
         )?;
         Ok(())
+    }
+
+    pub fn list_decision_points_for_work_run(
+        &self,
+        work_run_id: Uuid,
+    ) -> Result<Vec<DecisionPoint>, StoreError> {
+        let mut statement = self.connection.prepare(
+            r#"
+            SELECT id, work_run_id, status, problem, impact, recommended_option_id, options_json, selected_option_id, created_at, resolved_at
+            FROM decision_points
+            WHERE work_run_id = ?1
+            ORDER BY created_at ASC
+            "#,
+        )?;
+        let rows = statement.query_map(params![work_run_id.to_string()], |row| {
+            let options_json: String = row.get(6)?;
+            let resolved_at: Option<String> = row.get(9)?;
+            Ok(DecisionPoint {
+                id: parse_uuid(row.get::<_, String>(0)?).map_err(to_sql_error)?,
+                work_run_id: parse_uuid(row.get::<_, String>(1)?).map_err(to_sql_error)?,
+                status: decode_decision_point_status(&row.get::<_, String>(2)?),
+                problem: row.get(3)?,
+                impact: row.get(4)?,
+                recommended_option_id: row.get(5)?,
+                options: serde_json::from_str(&options_json).map_err(to_sql_error)?,
+                selected_option_id: row.get(7)?,
+                created_at: decode_time(&row.get::<_, String>(8)?).map_err(to_sql_error)?,
+                resolved_at: resolved_at
+                    .as_deref()
+                    .map(decode_time)
+                    .transpose()
+                    .map_err(to_sql_error)?,
+            })
+        })?;
+        rows.map(|row| Ok(row?)).collect()
     }
 
     pub fn insert_execution_graph(&self, graph: &ExecutionGraph) -> Result<(), StoreError> {
@@ -750,6 +809,14 @@ fn encode_workspace_kind(value: WorkspaceKind) -> &'static str {
     }
 }
 
+fn decode_workspace_kind(value: &str) -> WorkspaceKind {
+    match value {
+        "agent" => WorkspaceKind::Agent,
+        "proof" => WorkspaceKind::Proof,
+        _ => WorkspaceKind::Run,
+    }
+}
+
 fn encode_workspace_status(value: WorkspaceStatus) -> &'static str {
     match value {
         WorkspaceStatus::Creating => "creating",
@@ -758,6 +825,17 @@ fn encode_workspace_status(value: WorkspaceStatus) -> &'static str {
         WorkspaceStatus::Archived => "archived",
         WorkspaceStatus::Removed => "removed",
         WorkspaceStatus::Failed => "failed",
+    }
+}
+
+fn decode_workspace_status(value: &str) -> WorkspaceStatus {
+    match value {
+        "creating" => WorkspaceStatus::Creating,
+        "dirty" => WorkspaceStatus::Dirty,
+        "archived" => WorkspaceStatus::Archived,
+        "removed" => WorkspaceStatus::Removed,
+        "failed" => WorkspaceStatus::Failed,
+        _ => WorkspaceStatus::Ready,
     }
 }
 
@@ -802,6 +880,14 @@ fn encode_decision_point_status(value: xiezhi_core::DecisionPointStatus) -> &'st
         xiezhi_core::DecisionPointStatus::Pending => "pending",
         xiezhi_core::DecisionPointStatus::Resolved => "resolved",
         xiezhi_core::DecisionPointStatus::Cancelled => "cancelled",
+    }
+}
+
+fn decode_decision_point_status(value: &str) -> xiezhi_core::DecisionPointStatus {
+    match value {
+        "resolved" => xiezhi_core::DecisionPointStatus::Resolved,
+        "cancelled" => xiezhi_core::DecisionPointStatus::Cancelled,
+        _ => xiezhi_core::DecisionPointStatus::Pending,
     }
 }
 
@@ -931,6 +1017,10 @@ mod tests {
             updated_at: now,
         };
         store.insert_workspace(&workspace).unwrap();
+        assert_eq!(
+            store.get_workspace(workspace.id).unwrap().unwrap().path,
+            workspace.path
+        );
 
         store
             .insert_supervisor_session(&SupervisorSession {
@@ -971,6 +1061,13 @@ mod tests {
                 resolved_at: None,
             })
             .unwrap();
+        assert_eq!(
+            store
+                .list_decision_points_for_work_run(run.id)
+                .unwrap()
+                .len(),
+            1
+        );
 
         store
             .insert_execution_graph(&ExecutionGraph {

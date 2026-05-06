@@ -1,12 +1,14 @@
-use std::env;
+use std::{env, fs};
 
 use xiezhi_core::{
-    Event, EventActor, RuntimeKind, SupervisorSession, SupervisorSessionStatus, WorkItem, WorkRun,
-    WorkRunStatus, transition_work_run,
+    DecisionOption, DecisionPoint, DecisionPointStatus, Event, EventActor, RuntimeKind,
+    SupervisorSession, SupervisorSessionStatus, WorkItem, WorkRun, WorkRunStatus,
+    transition_work_run,
 };
 use xiezhi_hooks::HookRunner;
 use xiezhi_runtime::{
-    SupervisorIntakeInput, build_supervisor_intake_prompt, write_supervisor_intake_prompt,
+    RuntimeStructuredEvent, SupervisorIntakeInput, build_supervisor_intake_prompt,
+    run_supervisor_intake_command, write_supervisor_intake_prompt,
 };
 use xiezhi_store::Store;
 use xiezhi_workflow::{AgentRuntimeKind, load_workflow};
@@ -273,6 +275,17 @@ fn main() {
                     );
                 }
             }
+            Some("intake") => {
+                let Some(id) = args.next() else {
+                    eprintln!("usage: xiezhi work intake <run-id>");
+                    std::process::exit(2);
+                };
+                let run_id = uuid::Uuid::parse_str(&id).unwrap_or_else(|error| {
+                    eprintln!("invalid run id: {error}");
+                    std::process::exit(2);
+                });
+                run_supervisor_intake_or_exit(run_id);
+            }
             Some("show") => {
                 let Some(id) = args.next() else {
                     eprintln!("usage: xiezhi work show <run-id>");
@@ -317,6 +330,19 @@ fn main() {
                         session.model.as_deref().unwrap_or("<default>")
                     );
                 }
+                let decision_points = store
+                    .list_decision_points_for_work_run(run.id)
+                    .unwrap_or_else(|error| {
+                        eprintln!("failed to load decision points: {error}");
+                        std::process::exit(1);
+                    });
+                println!("decision points: {}", decision_points.len());
+                for decision in decision_points {
+                    println!(
+                        "- decision {:?} recommended:{} {}",
+                        decision.status, decision.recommended_option_id, decision.problem
+                    );
+                }
                 println!("events: {}", events.len());
                 for event in events {
                     println!(
@@ -329,6 +355,7 @@ fn main() {
                 println!("usage:");
                 println!("  xiezhi work list");
                 println!("  xiezhi work show <run-id>");
+                println!("  xiezhi work intake <run-id>");
             }
         },
         _ => {
@@ -338,6 +365,7 @@ fn main() {
             println!("  xiezhi run <goal>");
             println!("  xiezhi work list");
             println!("  xiezhi work show <run-id>");
+            println!("  xiezhi work intake <run-id>");
             println!("  xiezhi workflow check [path]");
             println!("  xiezhi --version");
         }
@@ -349,6 +377,216 @@ fn open_store_or_exit() -> Store {
         eprintln!("failed to open local state store: {error}");
         std::process::exit(1);
     })
+}
+
+fn run_supervisor_intake_or_exit(run_id: uuid::Uuid) {
+    let workflow = load_workflow("XIEZHI.md").ok().unwrap_or_default();
+    let store = open_store_or_exit();
+    let Some(mut run) = store.get_work_run(run_id).unwrap_or_else(|error| {
+        eprintln!("failed to load work run: {error}");
+        std::process::exit(1);
+    }) else {
+        eprintln!("work run not found: {run_id}");
+        std::process::exit(1);
+    };
+    if run.status != WorkRunStatus::SupervisorIntake {
+        eprintln!(
+            "work run is not ready for supervisor intake: {:?}",
+            run.status
+        );
+        std::process::exit(2);
+    }
+    let Some(workspace_id) = run.workspace_id else {
+        eprintln!("work run has no workspace");
+        std::process::exit(1);
+    };
+    let Some(workspace) = store.get_workspace(workspace_id).unwrap_or_else(|error| {
+        eprintln!("failed to load workspace: {error}");
+        std::process::exit(1);
+    }) else {
+        eprintln!("workspace not found: {workspace_id}");
+        std::process::exit(1);
+    };
+    let prompt_path = format!("{}/xiezhi-supervisor-intake.md", workspace.path);
+    let prompt = fs::read_to_string(&prompt_path).unwrap_or_else(|error| {
+        eprintln!("failed to read supervisor intake prompt {prompt_path}: {error}");
+        std::process::exit(1);
+    });
+    let output = run_supervisor_intake_command(
+        &workflow.agent_runtime.command,
+        &workspace.path,
+        &prompt,
+        workflow.agent_runtime.model.as_deref(),
+    )
+    .unwrap_or_else(|error| {
+        eprintln!("failed to run supervisor intake command: {error}");
+        std::process::exit(1);
+    });
+    let output_payload = serde_json::to_string(&output).unwrap_or_else(|error| {
+        eprintln!("failed to encode runtime output: {error}");
+        std::process::exit(1);
+    });
+    store
+        .insert_event(&Event {
+            id: uuid::Uuid::now_v7(),
+            work_run_id: run.id,
+            actor: EventActor::Runtime,
+            event_type: "supervisor_intake_runtime_output".to_string(),
+            summary: format!(
+                "Supervisor intake command exited with {:?}; extracted {} structured event(s).",
+                output.exit_code,
+                output.structured_events.len()
+            ),
+            payload_json: Some(output_payload),
+            created_at: time::OffsetDateTime::now_utc(),
+        })
+        .unwrap_or_else(|error| {
+            eprintln!("failed to persist runtime output event: {error}");
+            std::process::exit(1);
+        });
+
+    let mut saw_decision = false;
+    let mut saw_ready_handoff = false;
+    for event in &output.structured_events {
+        persist_structured_runtime_event_or_exit(&store, &run, event);
+        match event {
+            RuntimeStructuredEvent::AgentDecisionPoint(_) => saw_decision = true,
+            RuntimeStructuredEvent::SupervisorHandoff(handoff) if handoff.ready_to_normalize => {
+                saw_ready_handoff = true;
+            }
+            _ => {}
+        }
+    }
+
+    if !output.success() {
+        transition_work_run(&mut run, WorkRunStatus::Failed).unwrap_or_else(|error| {
+            eprintln!("failed to mark work run failed: {error}");
+            std::process::exit(1);
+        });
+        store.update_work_run(&run).unwrap_or_else(|error| {
+            eprintln!("failed to update failed work run: {error}");
+            std::process::exit(1);
+        });
+    } else if saw_decision {
+        transition_work_run(&mut run, WorkRunStatus::WaitingForDecision).unwrap_or_else(|error| {
+            eprintln!("failed to transition work run to waiting for decision: {error}");
+            std::process::exit(1);
+        });
+        store.update_work_run(&run).unwrap_or_else(|error| {
+            eprintln!("failed to update work run: {error}");
+            std::process::exit(1);
+        });
+    } else if saw_ready_handoff {
+        transition_work_run(&mut run, WorkRunStatus::Planning).unwrap_or_else(|error| {
+            eprintln!("failed to transition work run to planning: {error}");
+            std::process::exit(1);
+        });
+        store.update_work_run(&run).unwrap_or_else(|error| {
+            eprintln!("failed to update work run: {error}");
+            std::process::exit(1);
+        });
+    }
+
+    println!("work run: {}", run.id);
+    println!("status: {:?}", run.status);
+    println!("runtime exit: {:?}", output.exit_code);
+    println!("structured events: {}", output.structured_events.len());
+}
+
+fn persist_structured_runtime_event_or_exit(
+    store: &Store,
+    run: &WorkRun,
+    event: &RuntimeStructuredEvent,
+) {
+    match event {
+        RuntimeStructuredEvent::AgentDecisionPoint(decision) => {
+            let decision_point = DecisionPoint {
+                id: uuid::Uuid::now_v7(),
+                work_run_id: run.id,
+                status: DecisionPointStatus::Pending,
+                problem: decision.problem.clone(),
+                impact: decision.impact.clone(),
+                recommended_option_id: decision.recommended_option_id.clone(),
+                options: decision
+                    .options
+                    .iter()
+                    .map(|option| DecisionOption {
+                        id: option.id.clone(),
+                        label: option.label.clone(),
+                        tradeoff: option.tradeoff.clone(),
+                        plan_delta: option.plan_delta.clone(),
+                    })
+                    .collect(),
+                selected_option_id: None,
+                created_at: time::OffsetDateTime::now_utc(),
+                resolved_at: None,
+            };
+            store
+                .insert_decision_point(&decision_point)
+                .unwrap_or_else(|error| {
+                    eprintln!("failed to persist decision point: {error}");
+                    std::process::exit(1);
+                });
+            store
+                .insert_event(&Event {
+                    id: uuid::Uuid::now_v7(),
+                    work_run_id: run.id,
+                    actor: EventActor::SupervisorAgent,
+                    event_type: "decision_point_declared".to_string(),
+                    summary: decision.problem.clone(),
+                    payload_json: Some(
+                        serde_json::json!({
+                            "decision_point_id": decision_point.id,
+                            "decision": decision,
+                        })
+                        .to_string(),
+                    ),
+                    created_at: time::OffsetDateTime::now_utc(),
+                })
+                .unwrap_or_else(|error| {
+                    eprintln!("failed to persist decision event: {error}");
+                    std::process::exit(1);
+                });
+        }
+        RuntimeStructuredEvent::AgentProgressReport(progress) => {
+            store
+                .insert_event(&Event {
+                    id: uuid::Uuid::now_v7(),
+                    work_run_id: run.id,
+                    actor: EventActor::SupervisorAgent,
+                    event_type: "progress_reported".to_string(),
+                    summary: progress.summary.clone(),
+                    payload_json: Some(serde_json::to_string(progress).unwrap_or_else(|error| {
+                        eprintln!("failed to encode progress report: {error}");
+                        std::process::exit(1);
+                    })),
+                    created_at: time::OffsetDateTime::now_utc(),
+                })
+                .unwrap_or_else(|error| {
+                    eprintln!("failed to persist progress event: {error}");
+                    std::process::exit(1);
+                });
+        }
+        RuntimeStructuredEvent::SupervisorHandoff(handoff) => {
+            store
+                .insert_event(&Event {
+                    id: uuid::Uuid::now_v7(),
+                    work_run_id: run.id,
+                    actor: EventActor::SupervisorAgent,
+                    event_type: "supervisor_handoff".to_string(),
+                    summary: handoff.summary.clone(),
+                    payload_json: Some(serde_json::to_string(handoff).unwrap_or_else(|error| {
+                        eprintln!("failed to encode supervisor handoff: {error}");
+                        std::process::exit(1);
+                    })),
+                    created_at: time::OffsetDateTime::now_utc(),
+                })
+                .unwrap_or_else(|error| {
+                    eprintln!("failed to persist supervisor handoff event: {error}");
+                    std::process::exit(1);
+                });
+        }
+    }
 }
 
 fn run_lifecycle_hook_or_exit(
