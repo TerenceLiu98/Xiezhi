@@ -91,7 +91,13 @@ The Rust skeleton does not launch runtime processes yet.
 
 `xiezhi run` now creates a `SupervisorSession` and writes a `xiezhi-supervisor-intake.md` artifact into the run workspace. That artifact is the first durable runtime contract: it contains the goal, workspace path, runtime/model selection, workflow instructions, proof requirements, and the supported structured outputs for the supervisor.
 
-The next backend step is to feed this intake prompt to the selected runtime, capture the returned event stream, and normalize `AgentDecisionPoint`, `AgentProgressReport`, and `SupervisorHandoff` objects into store events.
+`xiezhi-runtime` can also extract supported structured JSON objects from mixed runtime text:
+
+- `AgentDecisionPoint v1`
+- `AgentProgressReport v1`
+- `SupervisorHandoff v1`
+
+The next backend step is to feed the intake prompt to the selected runtime, capture the returned event stream, and persist those normalized objects as store events and orchestration entities.
 
 ## Runtime Policy
 
