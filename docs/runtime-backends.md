@@ -85,6 +85,14 @@ Backend-specific events should normalize into:
 
 The Tauri UI consumes normalized events, not backend-specific event formats.
 
+## Current Skeleton
+
+The Rust skeleton does not launch runtime processes yet.
+
+`xiezhi run` now creates a `SupervisorSession` and writes a `xiezhi-supervisor-intake.md` artifact into the run workspace. That artifact is the first durable runtime contract: it contains the goal, workspace path, runtime/model selection, workflow instructions, proof requirements, and the supported structured outputs for the supervisor.
+
+The next backend step is to feed this intake prompt to the selected runtime, capture the returned event stream, and normalize `AgentDecisionPoint`, `AgentProgressReport`, and `SupervisorHandoff` objects into store events.
+
 ## Runtime Policy
 
 Runtime permissions are workspace-scoped by default.
@@ -96,4 +104,3 @@ Rules:
 - no deletion of orchestration metadata
 - network and shell permissions follow workflow policy
 - secrets are injected only through declared environment policy
-

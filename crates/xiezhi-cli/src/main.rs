@@ -5,6 +5,9 @@ use xiezhi_core::{
     WorkRunStatus, transition_work_run,
 };
 use xiezhi_hooks::HookRunner;
+use xiezhi_runtime::{
+    SupervisorIntakeInput, build_supervisor_intake_prompt, write_supervisor_intake_prompt,
+};
 use xiezhi_store::Store;
 use xiezhi_workflow::{AgentRuntimeKind, load_workflow};
 use xiezhi_workspace::WorkspaceManager;
@@ -147,6 +150,39 @@ fn main() {
                         eprintln!("failed to persist supervisor session: {error}");
                         std::process::exit(1);
                     });
+                let intake_prompt = build_supervisor_intake_prompt(&SupervisorIntakeInput {
+                    goal: run.goal.clone(),
+                    work_run_id: run.id.to_string(),
+                    workspace_path: workspace.path.clone(),
+                    workflow: workflow.clone(),
+                });
+                let intake_prompt_path =
+                    write_supervisor_intake_prompt(&workspace.path, &intake_prompt).unwrap_or_else(
+                        |error| {
+                            eprintln!("failed to write supervisor intake prompt: {error}");
+                            std::process::exit(1);
+                        },
+                    );
+                store
+                    .insert_event(&Event {
+                        id: uuid::Uuid::now_v7(),
+                        work_run_id: run.id,
+                        actor: EventActor::XieZhi,
+                        event_type: "supervisor_intake_prompt_ready".to_string(),
+                        summary: format!("Wrote supervisor intake prompt to {intake_prompt_path}."),
+                        payload_json: Some(
+                            serde_json::json!({
+                                "path": intake_prompt_path,
+                                "bytes": intake_prompt.len(),
+                            })
+                            .to_string(),
+                        ),
+                        created_at: time::OffsetDateTime::now_utc(),
+                    })
+                    .unwrap_or_else(|error| {
+                        eprintln!("failed to persist supervisor prompt event: {error}");
+                        std::process::exit(1);
+                    });
                 run.active_supervisor_session_id = Some(supervisor_session.id);
                 transition_work_run(&mut run, WorkRunStatus::SupervisorIntake).unwrap_or_else(
                     |error| {
@@ -191,6 +227,7 @@ fn main() {
             println!("status: {:?}", run.status);
             if let Some(supervisor_session_id) = run.active_supervisor_session_id {
                 println!("supervisor session: {supervisor_session_id}");
+                println!("supervisor intake: xiezhi-supervisor-intake.md");
             }
             println!("workflow runtime: {:?}", workflow.agent_runtime.kind);
             if let Some(model) = workflow.agent_runtime.model {

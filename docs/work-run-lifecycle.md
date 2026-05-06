@@ -44,6 +44,7 @@ Current skeleton behavior:
 
 - creates a durable `SupervisorSession`
 - records the selected runtime and model
+- writes `xiezhi-supervisor-intake.md` into the run workspace
 - transitions the WorkRun to `supervisor_intake`
 - does not yet launch or reconnect the runtime process
 

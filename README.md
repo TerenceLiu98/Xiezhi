@@ -28,7 +28,7 @@ cargo run -p xiezhi-cli -- run "build a pomodoro app"
 cargo run -p xiezhi-cli -- workflow check XIEZHI.md
 ```
 
-`run` currently creates a local `WorkItem`, `WorkRun`, isolated `Workspace`, lifecycle hook evidence, and a `SupervisorSession` in `.xiezhi/state.sqlite`. It stops at `SupervisorIntake`; runtime process control and plan normalization are the next layer.
+`run` currently creates a local `WorkItem`, `WorkRun`, isolated `Workspace`, lifecycle hook evidence, a `SupervisorSession`, and a `xiezhi-supervisor-intake.md` prompt artifact inside the run workspace. It stops at `SupervisorIntake`; runtime process control and plan normalization are the next layer.
 
 `workflow check` validates a workflow file with YAML front matter and supervisor instructions.
 

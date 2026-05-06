@@ -15,6 +15,7 @@ time.workspace = true
 uuid.workspace = true
 xiezhi-core.workspace = true
 xiezhi-hooks.workspace = true
+xiezhi-runtime.workspace = true
 xiezhi-store.workspace = true
 xiezhi-workspace.workspace = true
 xiezhi-workflow.workspace = true

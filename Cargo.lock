@@ -763,6 +763,7 @@ dependencies = [
  "uuid",
  "xiezhi-core",
  "xiezhi-hooks",
+ "xiezhi-runtime",
  "xiezhi-store",
  "xiezhi-workflow",
  "xiezhi-workspace",
@@ -785,6 +786,14 @@ dependencies = [
  "serde",
  "thiserror",
  "time",
+]
+
+[[package]]
+name = "xiezhi-runtime"
+version = "0.1.0"
+dependencies = [
+ "thiserror",
+ "xiezhi-workflow",
 ]
 
 [[package]]
