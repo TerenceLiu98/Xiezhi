@@ -685,6 +685,42 @@ impl Store {
         Ok(())
     }
 
+    pub fn get_changeset(&self, id: Uuid) -> Result<Option<ChangeSet>, StoreError> {
+        let mut statement = self.connection.prepare(
+            r#"
+            SELECT id, work_run_id, agent_run_id, workspace_id, status, changed_files_json, diff_ref, created_at, updated_at
+            FROM changesets
+            WHERE id = ?1
+            "#,
+        )?;
+        let mut rows = statement.query(params![id.to_string()])?;
+        let Some(row) = rows.next()? else {
+            return Ok(None);
+        };
+        Ok(Some(decode_changeset_row(row)?))
+    }
+
+    pub fn update_changeset(&self, changeset: &ChangeSet) -> Result<(), StoreError> {
+        self.connection.execute(
+            r#"
+            UPDATE changesets
+            SET status = ?2,
+                changed_files_json = ?3,
+                diff_ref = ?4,
+                updated_at = ?5
+            WHERE id = ?1
+            "#,
+            params![
+                changeset.id.to_string(),
+                encode_changeset_status(changeset.status),
+                serde_json::to_string(&changeset.changed_files)?,
+                changeset.diff_ref,
+                encode_time(changeset.updated_at),
+            ],
+        )?;
+        Ok(())
+    }
+
     pub fn list_changesets_for_work_run(
         &self,
         work_run_id: Uuid,
@@ -697,20 +733,7 @@ impl Store {
             ORDER BY created_at ASC
             "#,
         )?;
-        let rows = statement.query_map(params![work_run_id.to_string()], |row| {
-            let changed_files_json: String = row.get(5)?;
-            Ok(ChangeSet {
-                id: parse_uuid(row.get::<_, String>(0)?).map_err(to_sql_error)?,
-                work_run_id: parse_uuid(row.get::<_, String>(1)?).map_err(to_sql_error)?,
-                agent_run_id: parse_uuid(row.get::<_, String>(2)?).map_err(to_sql_error)?,
-                workspace_id: parse_uuid(row.get::<_, String>(3)?).map_err(to_sql_error)?,
-                status: decode_changeset_status(&row.get::<_, String>(4)?),
-                changed_files: serde_json::from_str(&changed_files_json).map_err(to_sql_error)?,
-                diff_ref: row.get(6)?,
-                created_at: decode_time(&row.get::<_, String>(7)?).map_err(to_sql_error)?,
-                updated_at: decode_time(&row.get::<_, String>(8)?).map_err(to_sql_error)?,
-            })
-        })?;
+        let rows = statement.query_map(params![work_run_id.to_string()], decode_changeset_row)?;
         rows.map(|row| Ok(row?)).collect()
     }
 
@@ -734,6 +757,19 @@ impl Store {
             ],
         )?;
         Ok(())
+    }
+
+    pub fn list_proofs_for_work_run(&self, work_run_id: Uuid) -> Result<Vec<Proof>, StoreError> {
+        let mut statement = self.connection.prepare(
+            r#"
+            SELECT id, work_run_id, changeset_id, proof_type, status, summary, metadata_json, created_at
+            FROM proofs
+            WHERE work_run_id = ?1
+            ORDER BY created_at ASC
+            "#,
+        )?;
+        let rows = statement.query_map(params![work_run_id.to_string()], decode_proof_row)?;
+        rows.map(|row| Ok(row?)).collect()
     }
 
     pub fn get_work_item(&self, id: Uuid) -> Result<Option<WorkItem>, StoreError> {
@@ -908,6 +944,38 @@ fn decode_agent_run_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AgentRun> {
             .map(decode_time)
             .transpose()
             .map_err(to_sql_error)?,
+    })
+}
+
+fn decode_changeset_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ChangeSet> {
+    let changed_files_json: String = row.get(5)?;
+    Ok(ChangeSet {
+        id: parse_uuid(row.get::<_, String>(0)?).map_err(to_sql_error)?,
+        work_run_id: parse_uuid(row.get::<_, String>(1)?).map_err(to_sql_error)?,
+        agent_run_id: parse_uuid(row.get::<_, String>(2)?).map_err(to_sql_error)?,
+        workspace_id: parse_uuid(row.get::<_, String>(3)?).map_err(to_sql_error)?,
+        status: decode_changeset_status(&row.get::<_, String>(4)?),
+        changed_files: serde_json::from_str(&changed_files_json).map_err(to_sql_error)?,
+        diff_ref: row.get(6)?,
+        created_at: decode_time(&row.get::<_, String>(7)?).map_err(to_sql_error)?,
+        updated_at: decode_time(&row.get::<_, String>(8)?).map_err(to_sql_error)?,
+    })
+}
+
+fn decode_proof_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Proof> {
+    let changeset_id: Option<String> = row.get(2)?;
+    Ok(Proof {
+        id: parse_uuid(row.get::<_, String>(0)?).map_err(to_sql_error)?,
+        work_run_id: parse_uuid(row.get::<_, String>(1)?).map_err(to_sql_error)?,
+        changeset_id: changeset_id
+            .map(parse_uuid)
+            .transpose()
+            .map_err(to_sql_error)?,
+        proof_type: decode_proof_type(&row.get::<_, String>(3)?),
+        status: decode_proof_status(&row.get::<_, String>(4)?),
+        summary: row.get(5)?,
+        metadata_json: row.get(6)?,
+        created_at: decode_time(&row.get::<_, String>(7)?).map_err(to_sql_error)?,
     })
 }
 
@@ -1196,6 +1264,30 @@ fn encode_proof_status(value: ProofStatus) -> &'static str {
         ProofStatus::Warning => "warning",
         ProofStatus::Failed => "failed",
         ProofStatus::Blocked => "blocked",
+    }
+}
+
+fn decode_proof_type(value: &str) -> ProofType {
+    match value {
+        "semantic_diff" => ProofType::SemanticDiff,
+        "scope_verdict" => ProofType::ScopeVerdict,
+        "review" => ProofType::Review,
+        "screenshot" => ProofType::Screenshot,
+        "app_launch" => ProofType::AppLaunch,
+        "manual_walkthrough" => ProofType::ManualWalkthrough,
+        "promotion_commit" => ProofType::PromotionCommit,
+        "tracker_update" => ProofType::TrackerUpdate,
+        _ => ProofType::Command,
+    }
+}
+
+fn decode_proof_status(value: &str) -> ProofStatus {
+    match value {
+        "passed" => ProofStatus::Passed,
+        "warning" => ProofStatus::Warning,
+        "failed" => ProofStatus::Failed,
+        "blocked" => ProofStatus::Blocked,
+        _ => ProofStatus::Pending,
     }
 }
 

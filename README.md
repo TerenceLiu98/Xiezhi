@@ -42,11 +42,14 @@ cargo run -p xiezhi-cli -- work decide <decision-id> <option-id>
 cargo run -p xiezhi-cli -- work dispatch <run-id>
 cargo run -p xiezhi-cli -- agent run <agent-run-id>
 cargo run -p xiezhi-cli -- work step <run-id>
+cargo run -p xiezhi-cli -- proof run <changeset-id>
+cargo run -p xiezhi-cli -- changeset promote <changeset-id>
 ```
 
 `work step` advances one safe orchestration step based on current state: supervisor intake,
-dispatching task nodes into agent workspaces, or running the next planned agent. It stops for
-human decision points instead of auto-selecting them.
+dispatching task nodes into agent workspaces, running the next planned agent, or running proof for
+the next captured changeset, or promoting the next verified changeset. It stops for human decision
+points instead of auto-selecting them.
 
 XieZhi should then:
 

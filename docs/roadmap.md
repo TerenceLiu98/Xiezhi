@@ -49,6 +49,8 @@ Deliverables:
 - safe path policy
 - graph task node materialization into AgentWorkspace + AgentRun
 - one-step local orchestration driver for intake, dispatch, and planned agent execution
+- workflow-declared command proof for captured ChangeSets
+- verified ChangeSet promotion into the current target directory
 
 ## Phase 3: Supervisor Runtime
 
