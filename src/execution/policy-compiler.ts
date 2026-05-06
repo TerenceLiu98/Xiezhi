@@ -55,6 +55,10 @@ export function compileExecutionPolicy(input: {
         ...(input.intent.summary ? [`Summary: ${input.intent.summary}`] : []),
         `Stay within allowed files: ${allowedFiles.join(", ") || "none"}.`,
         `Avoid forbidden files: ${forbiddenFiles.join(", ") || "none"}.`,
+        "You are already inside the isolated task worktree. Treat the current working directory as the repository root for this task.",
+        "Do not read from, write to, copy from, or run commands against the parent repository path or any sibling .xiezhi/worktrees directory.",
+        "Do not use absolute paths outside the current working directory. If you need prior context, use only files already present in this worktree and the task contract.",
+        "Do not commit, merge, promote, or copy files back to the main repository. XieZhi captures the patch from this worktree and promotes it after verification.",
         "Do not create, edit, install, format, or regenerate files outside the allowed file list.",
         "If a command would create lockfiles, build artifacts, or other files outside the allowed scope, skip that command and explain it in your final summary.",
         ...(input.intent.relatedSymbols.length > 0

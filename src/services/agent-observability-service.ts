@@ -14,6 +14,7 @@ import {
   violationsTable
 } from "../db/schema.js"
 import { getPlanView } from "./planning-service.js"
+import { getIntentParallelGroup, getIntentSubagentRole, type IntentIr } from "../planning/types.js"
 
 function safeJsonParse<T>(value: string | null, fallback: T): T {
   if (!value) return fallback
@@ -66,8 +67,16 @@ export type ReadyQueueResult = {
     allowedFiles: string[]
     dependsOnTaskIds: string[]
     canRunWith: string[]
+    subagentRole: string
+    parallelGroup: string | null
   }>
-  blockedTasks: Array<{ id: string; title: string; status: string; blockedBy: string[] }>
+  blockedTasks: Array<{
+    id: string
+    title: string
+    status: string
+    blockedBy: string[]
+    blockedReasons: Array<{ taskId: string; status: string; reason: string }>
+  }>
   doneTasks: Array<{ id: string; title: string; status: string }>
   skippedTasks: Array<{ id: string; title: string; reason: string }>
   nextAction: string
@@ -117,6 +126,10 @@ export type AgentSessionShowResult = {
   resolvedDecisions: Array<{ agentRunId: string; summary: string; metadata: unknown }>
   problemReports: Array<{ agentRunId: string; summary: string; metadata: unknown }>
   proposedSolutions: Array<{ agentRunId: string; summary: string; metadata: unknown }>
+  progressReports: Array<{ agentRunId: string; summary: string; metadata: unknown; createdAt: string }>
+  executionPlans: Array<{ agentRunId: string; summary: string; metadata: unknown; createdAt: string }>
+  supervisorHandoffs: Array<{ agentRunId: string; summary: string; metadata: unknown; createdAt: string }>
+  normalizationEvents: Array<{ agentRunId: string; type: string; summary: string; metadata: unknown; createdAt: string }>
   buildEvents: Array<{ agentRunId: string; type: string; summary: string; metadata: unknown }>
   nextAction: string
 }
@@ -127,10 +140,31 @@ export class AgentObservabilityService {
   ready(featureId?: string): ReadyQueueResult {
     const plan = getPlanView(this.cwd, featureId)
     const taskById = new Map(plan.tasks.map((task) => [task.id, task]))
+    const taskRows =
+      plan.tasks.length > 0 ? this.db.select().from(tasksTable).where(inArray(tasksTable.id, plan.tasks.map((task) => task.id))).all() : []
+    const intentByTaskId = new Map(taskRows.map((task) => [task.id, safeJsonParse<IntentIr | null>(task.intentIrJson, null)]))
+    const dependencyBlockReason = (dependencyId: string) => {
+      const dependency = taskById.get(dependencyId)
+      if (!dependency) {
+        return { taskId: dependencyId, status: "missing", reason: "dependency task is missing" }
+      }
+      if (dependency.status === "promoted") {
+        return null
+      }
+      if (dependency.status === "verified") {
+        return { taskId: dependencyId, status: dependency.status, reason: "dependency verified but not promoted" }
+      }
+      if (dependency.status === "patched") {
+        return { taskId: dependencyId, status: dependency.status, reason: "dependency patch captured but not verified/promoted" }
+      }
+      if (dependency.status === "rejected" || dependency.status === "failed") {
+        return { taskId: dependencyId, status: dependency.status, reason: `dependency ${dependency.status}` }
+      }
+      return { taskId: dependencyId, status: dependency.status, reason: `dependency status is ${dependency.status}` }
+    }
     const dependencySatisfied = (task: (typeof plan.tasks)[number]) => {
       return task.dependsOnTaskIds.every((dependencyId) => {
-        const dependency = taskById.get(dependencyId)
-        return dependency && ["verified", "promoted"].includes(dependency.status)
+        return dependencyBlockReason(dependencyId) === null
       })
     }
     const readyBase = plan.tasks.filter((task) => {
@@ -143,6 +177,8 @@ export class AgentObservabilityService {
       status: "ready",
       allowedFiles: task.allowedFiles,
       dependsOnTaskIds: task.dependsOnTaskIds,
+      subagentRole: getIntentSubagentRole(intentByTaskId.get(task.id) ?? null),
+      parallelGroup: getIntentParallelGroup(intentByTaskId.get(task.id) ?? null),
       canRunWith: readyBase
         .filter((candidate) => candidate.id !== task.id && !scopesConflict(task.allowedFiles, candidate.allowedFiles))
         .map((candidate) => candidate.id)
@@ -153,10 +189,11 @@ export class AgentObservabilityService {
         id: task.id,
         title: task.title,
         status: task.status,
-        blockedBy: task.dependsOnTaskIds.filter((dependencyId) => {
-          const dependency = taskById.get(dependencyId)
-          return !dependency || !["verified", "promoted"].includes(dependency.status)
-        })
+        blockedReasons: task.dependsOnTaskIds.flatMap((dependencyId) => {
+          const reason = dependencyBlockReason(dependencyId)
+          return reason ? [reason] : []
+        }),
+        blockedBy: task.dependsOnTaskIds.filter((dependencyId) => dependencyBlockReason(dependencyId) !== null)
       }))
     const doneTasks = plan.tasks
       .filter((task) => ["promoted", "completed"].includes(task.status))
@@ -259,6 +296,43 @@ export class AgentObservabilityService {
       proposedSolutions: events
         .filter((event) => event.type === "agent_solution_proposed")
         .map((event) => ({ agentRunId: event.agentRunId, summary: event.summary, metadata: safeJsonParse<unknown>(event.metadataJson, null) })),
+      progressReports: events
+        .filter((event) => event.type === "agent_progress_reported")
+        .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+        .map((event) => ({
+          agentRunId: event.agentRunId,
+          summary: event.summary,
+          metadata: safeJsonParse<unknown>(event.metadataJson, null),
+          createdAt: event.createdAt
+        })),
+      executionPlans: events
+        .filter((event) => event.type === "agent_execution_plan_declared")
+        .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+        .map((event) => ({
+          agentRunId: event.agentRunId,
+          summary: event.summary,
+          metadata: safeJsonParse<unknown>(event.metadataJson, null),
+          createdAt: event.createdAt
+        })),
+      supervisorHandoffs: events
+        .filter((event) => event.type === "supervisor_handoff")
+        .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+        .map((event) => ({
+          agentRunId: event.agentRunId,
+          summary: event.summary,
+          metadata: safeJsonParse<unknown>(event.metadataJson, null),
+          createdAt: event.createdAt
+        })),
+      normalizationEvents: events
+        .filter((event) => event.type === "normalization_started" || event.type === "normalization_completed" || event.type === "normalization_failed")
+        .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+        .map((event) => ({
+          agentRunId: event.agentRunId,
+          type: event.type,
+          summary: event.summary,
+          metadata: safeJsonParse<unknown>(event.metadataJson, null),
+          createdAt: event.createdAt
+        })),
       buildEvents: events
         .filter((event) => event.type === "build_wave_started" || event.type === "build_wave_completed")
         .map((event) => ({ agentRunId: event.agentRunId, type: event.type, summary: event.summary, metadata: safeJsonParse<unknown>(event.metadataJson, null) })),

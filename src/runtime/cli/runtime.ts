@@ -81,6 +81,10 @@ async function captureChangedFiles(cwd: string) {
 function buildRuntimePrompt(input: RunTaskInput & { compiledPolicy?: CompiledExecutionPolicy }) {
   return [
     "You are running inside a task-scoped worktree managed by XieZhi.",
+    "Treat the current working directory as the only repository root for this task.",
+    "Do not read from, write to, copy from, or run commands against the parent repository or sibling .xiezhi/worktrees directories.",
+    "Do not use absolute paths outside the current working directory.",
+    "Do not commit, merge, promote, or copy files back to the main repository; XieZhi will capture and promote the patch after verification.",
     `Goal: ${input.goal}`,
     `Only edit these files when possible: ${input.allowedFiles.join(", ") || "none"}.`,
     `Do not edit these files: ${input.forbiddenFiles.join(", ") || "none"}.`,

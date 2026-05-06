@@ -34,8 +34,9 @@ XieZhi sits between an agent's plan and an AI coding runtime:
 
 ```text
 User Goal
-  -> Agent Intake
-  -> AgentPlan JSON / DecisionPoint / ProblemReport
+  -> OpenCode Supervisor Agent
+  -> Supervisor Intake / DecisionPoint / Handoff
+  -> Normalized AgentPlan JSON
   -> Feature DAG
   -> Task DAG
   -> Intent IR
@@ -58,12 +59,13 @@ Every meaningful code change should be tied to a task, scoped to allowed files o
 The first version is intentionally CLI-first and local-first.
 
 - A CLI for importing agent plans, running scoped tasks, verifying patches, and reviewing evidence
-- `xiezhi agent build` for natural-language goals where the main agent owns assumptions, decision points, and solution proposals
+- `xiezhi agent build --ui` for natural-language goals where the main agent owns assumptions, product decisions, subagent planning, progress reports, and solution proposals
 - Feature DAG and Task DAG generation from strict AgentPlan JSON
 - Intent IR and task-scoped execution policy
 - Repository indexing for TypeScript, JavaScript, and Python projects
 - AST-based semantic diff
-- Patch verification for out-of-scope changes, missing tests, and risky API changes
+- Patch verification for undeclared scope, missing declared checks, and risky API changes
+- Automatic build-loop recovery evidence, including agent-declared scope revision when a valid patch needs a wider declaration
 - Worktree-isolated task execution through OpenCode
 
 ## What v1 Does Not Include
@@ -92,20 +94,40 @@ xiezhi review <patch-id>
 xiezhi patch promote <patch-id>
 ```
 
-When the ready queue contains non-overlapping scopes, a main agent can run one safe wave:
+When the ready queue contains non-overlapping scopes, a main agent can run one safe execution group:
 
 ```bash
 xiezhi agent run-ready --runtime opencode --parallel 2 --auto --decision-runtime opencode
 ```
 
-For a greenfield app idea, the agent still writes the plan; XieZhi only validates and persists it:
+For a greenfield app idea, the ordinary user entrypoint starts the local Graph UI:
 
 ```bash
 xiezhi init
-xiezhi agent build "build a 番茄钟" --runtime opencode --parallel 2
+xiezhi agent build "build a 番茄钟" --runtime opencode --ui --parallel 4
 ```
 
-`agent build` is the ordinary user entrypoint. The main agent may return an AgentPlan and continue automatically, or declare a structured DecisionPoint when a user choice is required. XieZhi records that decision evidence and only executes bounded DAG/AST/patch operations.
+By default, `agent build` starts with a fast supervisor intake instead of forcing an immediate strict plan. OpenCode may explore the repo, report observations, expose product, UI, architecture, or validation decision points, outline subagent work, and then hand off a `SupervisorHandoff v1`. XieZhi records that evidence and asks the runtime to normalize the handoff into strict `AgentPlan v1` before guarded execution begins.
+
+`--parallel` is a safety/resource limit. The OpenCode supervisor agent declares how many subagents to use and how work is grouped; XieZhi validates that plan against DAG, file scope, AST scope, patch lifecycle, and promotion rules. The UI shows supervisor exploration, product decision points, selected model, current phase, active subagents, progress evidence, and the full DAG debug graph.
+
+For greenfield app goals, the supervisor should ask user-facing decisions for MVP feature scope, UI/interaction style, and validation/check policy. Validation strictness is intentionally a user tradeoff: fast smoke, build/typecheck required, or build plus tests required.
+
+During task execution, XieZhi runs OpenCode inside an isolated task worktree and auto-approves OpenCode permissions for that worktree so non-interactive builds do not stall. The task prompt forbids touching the parent repository or sibling worktrees; patch promotion remains a XieZhi operation.
+
+For debugging the old strict import path directly:
+
+```bash
+xiezhi agent build "build a 番茄钟" --runtime opencode --strict-plan-first --dry-run-plan
+```
+
+To choose a specific OpenCode provider/model, pass OpenCode's `provider/model` id through XieZhi:
+
+```bash
+xiezhi agent build "build a 番茄钟" --runtime opencode --model anthropic/claude-sonnet-4-5 --ui
+```
+
+Use `--decision-model <provider/model>` when warning-promotion decisions should use a different model; otherwise XieZhi reuses `--model`.
 
 For lower-level inspection, the same flow can be driven step by step:
 
@@ -246,7 +268,7 @@ More detailed install and preset guidance lives in [docs/install.md](/Users/tere
 The immediate goal is to prove a tight v1 loop:
 
 1. Index a real TypeScript repository.
-2. Import an agent's strict JSON plan into a runnable task graph.
+2. Let a supervisor agent explore, hand off, and normalize a runnable task graph.
 3. Execute one task in an isolated worktree.
 4. Produce a semantic diff and verification report.
 5. Accept a good patch or reject an out-of-scope one.

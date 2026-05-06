@@ -102,6 +102,150 @@ describe("graph harness UI", () => {
     }
   })
 
+  it("exposes supervisor progress and subagents in graph state APIs", async () => {
+    const cwd = await createTempTsRepo("xiezhi-graph-progress-")
+    await runInit(cwd)
+    const plan = importRouterPlan(cwd, {
+      tasks: [{ ...routerAgentPlan().tasks[0]!, parallelGroup: "core", subagentRole: "implementation" }]
+    })
+    const sessionId = createId()
+    const db = new Database(`${cwd}/.xiezhi/xiezhi.db`)
+    try {
+      const timestamp = new Date().toISOString()
+      db.prepare(
+        "INSERT INTO agent_sessions (id, goal, feature_id, planning_runtime_name, raw_agent_output, plan_summary_json, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+      ).run(sessionId, "graph progress", plan.featureId, "opencode", "{}", "{}", "running", timestamp, timestamp)
+      db.prepare(
+        "INSERT INTO agent_runs (id, agent_session_id, assignment_id, task_id, runtime_name, runtime_mode, patch_id, status, event_summary_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+      ).run("progress-run", sessionId, null, "__build__", "opencode", "real", null, "completed", "{}", timestamp, timestamp)
+      db.prepare("INSERT INTO agent_events (id, agent_run_id, type, summary, metadata_json, created_at) VALUES (?, ?, ?, ?, ?, ?)").run(
+        "progress-event",
+        "progress-run",
+        "agent_progress_reported",
+        "Supervisor is building the timer shell.",
+        JSON.stringify({
+          version: "v1",
+          type: "progress_report",
+          phase: "building",
+          summary: "Supervisor is building the timer shell.",
+          currentTaskId: plan.tasks[0]!.id,
+          executionGroup: "core",
+          subagents: [
+            {
+              id: "impl-1",
+              role: "implementation",
+              taskId: plan.tasks[0]!.id,
+              status: "running",
+              summary: "Implementing timer UI."
+            }
+          ],
+          risks: [],
+          nextAction: "Verify and promote when complete."
+        }),
+        timestamp
+      )
+    } finally {
+      db.close()
+    }
+
+    const state = getGraphState(cwd, { sessionId })
+    expect(state.currentPhase).toBe("building")
+    expect(state.subagents[0]?.summary).toContain("timer UI")
+
+    const graph = getGraphView(cwd, { sessionId })
+    expect(graph.nodes.some((node) => node.data.type === "execution_group")).toBe(true)
+
+    const server = await startGraphUiServer({ cwd, port: 0, openBrowser: false })
+    try {
+      const progress = await fetch(`${server.url}/api/progress`).then(
+        (response) => response.json() as Promise<{ currentPhase: string; subagents: unknown[] }>
+      )
+      expect(progress.currentPhase).toBe("building")
+      expect(progress.subagents).toHaveLength(1)
+    } finally {
+      await server.close()
+    }
+  })
+
+  it("exposes selected runtime and decision models in graph UI state", async () => {
+    const cwd = await createTempTsRepo("xiezhi-graph-model-")
+    await runInit(cwd)
+    const server = await startGraphUiServer({
+      cwd,
+      port: 0,
+      openBrowser: false,
+      runtime: "opencode",
+      model: "anthropic/claude-sonnet-4-5",
+      decisionModel: "openai/gpt-5.1"
+    })
+
+    try {
+      const state = await fetch(`${server.url}/api/state`).then(
+        (response) => response.json() as Promise<{ runtimeModel: string; decisionModel: string }>
+      )
+      expect(state.runtimeModel).toBe("anthropic/claude-sonnet-4-5")
+      expect(state.decisionModel).toBe("openai/gpt-5.1")
+
+      const progress = await fetch(`${server.url}/api/progress`).then(
+        (response) => response.json() as Promise<{ runtimeModel: string; decisionModel: string }>
+      )
+      expect(progress.runtimeModel).toBe("anthropic/claude-sonnet-4-5")
+      expect(progress.decisionModel).toBe("openai/gpt-5.1")
+    } finally {
+      await server.close()
+    }
+  })
+
+  it("exposes supervisor handoff and normalization state before a DAG exists", async () => {
+    const cwd = await createTempTsRepo("xiezhi-graph-supervisor-handoff-")
+    await runInit(cwd)
+    const sessionId = createId()
+    const db = new Database(`${cwd}/.xiezhi/xiezhi.db`)
+    try {
+      const timestamp = new Date().toISOString()
+      db.prepare(
+        "INSERT INTO agent_sessions (id, goal, feature_id, planning_runtime_name, raw_agent_output, plan_summary_json, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+      ).run(sessionId, "graph supervisor", null, "opencode", "{}", "{}", "running", timestamp, timestamp)
+      db.prepare(
+        "INSERT INTO agent_runs (id, agent_session_id, assignment_id, task_id, runtime_name, runtime_mode, patch_id, status, event_summary_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+      ).run("supervisor-run", sessionId, null, "__build__", "opencode", "real", null, "completed", "{}", timestamp, timestamp)
+      db.prepare("INSERT INTO agent_events (id, agent_run_id, type, summary, metadata_json, created_at) VALUES (?, ?, ?, ?, ?, ?)").run(
+        "handoff-event",
+        "supervisor-run",
+        "supervisor_handoff",
+        "Supervisor is ready to normalize.",
+        JSON.stringify({
+          version: "v1",
+          type: "supervisor_handoff",
+          goal: "graph supervisor",
+          summary: "Supervisor is ready to normalize.",
+          assumptions: ["Use local app shell."],
+          resolvedDecisions: [],
+          subagentPlan: [],
+          normalizationInstructions: ["Create AgentPlan."],
+          readyToNormalize: true
+        }),
+        timestamp
+      )
+      db.prepare("INSERT INTO agent_events (id, agent_run_id, type, summary, metadata_json, created_at) VALUES (?, ?, ?, ?, ?, ?)").run(
+        "normalization-event",
+        "supervisor-run",
+        "normalization_started",
+        "Normalizing supervisor handoff into AgentPlan v1.",
+        "{}",
+        timestamp
+      )
+    } finally {
+      db.close()
+    }
+
+    const state = getGraphState(cwd, { sessionId })
+    expect(state.supervisorPhase).toBe("normalize_plan")
+    expect(state.supervisorHandoff).toMatchObject({ type: "supervisor_handoff" })
+    expect(state.normalizationStatus).toBe("running")
+    expect(state.feature).toBeNull()
+  })
+
   it("lets the web UI ask the agent for a blocked task recovery plan", async () => {
     const cwd = await createTempTsRepo("xiezhi-graph-recover-")
     await runInit(cwd)

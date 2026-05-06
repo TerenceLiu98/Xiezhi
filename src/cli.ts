@@ -146,8 +146,9 @@ agentCommand
   .description("Ask an agent runtime for a strict AgentPlan JSON object and import it as XieZhi DAG state")
   .argument("<goal>", "Goal for the planning agent")
   .option("--runtime <runtime>", "Runtime to use", "opencode")
-  .action(async (goal: string, options: { runtime: RuntimeName }) => {
-    const result = await runAgentPlanCommand(process.cwd(), goal, options.runtime)
+  .option("--model <provider/model>", "Model to pass to OpenCode, e.g. anthropic/claude-sonnet-4-5")
+  .action(async (goal: string, options: { runtime: RuntimeName; model?: string }) => {
+    const result = await runAgentPlanCommand(process.cwd(), goal, options.runtime, options.model)
     printSection("Agent Plan", [
       `status: ${formatStatus(result.status)}`,
       `agent session: ${result.agentSessionId}`,
@@ -176,11 +177,14 @@ agentCommand
   .description("Harness the main agent through DAG/AST/evidence until the build completes or needs a decision")
   .argument("<goal>", "Natural-language build goal")
   .option("--runtime <runtime>", "Runtime to use", "opencode")
+  .option("--model <provider/model>", "Model to pass to OpenCode, e.g. anthropic/claude-sonnet-4-5")
   .option("--parallel <count>", "Maximum parallel ready tasks per wave", "2")
   .option("--decision-runtime <runtime>", "Runtime for warning promotion decisions", "opencode")
+  .option("--decision-model <provider/model>", "Model for warning promotion decisions; defaults to --model")
   .option("--max-waves <count>", "Maximum ready waves to execute", "20")
   .option("--assume-defaults", "Automatically select agent-recommended/default decision options")
   .option("--dry-run-plan", "Only run agent intake and import the plan or decision evidence")
+  .option("--strict-plan-first", "Use the legacy strict AgentPlan/DecisionPoint/ProblemReport intake")
   .option("--ui", "Open the local graph harness UI while the build runs")
   .option("--port <port>", "Port for --ui graph server", "4317")
   .option("--no-open", "Do not open the browser for --ui")
@@ -189,11 +193,14 @@ agentCommand
       goal: string,
       options: {
         runtime: RuntimeName
+        model?: string
         parallel: string
         decisionRuntime: RuntimeName
+        decisionModel?: string
         maxWaves: string
         assumeDefaults?: boolean
         dryRunPlan?: boolean
+        strictPlanFirst?: boolean
         ui?: boolean
         port: string
         open?: boolean
@@ -206,7 +213,9 @@ agentCommand
             openBrowser: options.open !== false,
             runtime: options.runtime,
             decisionRuntime: options.decisionRuntime,
-            parallel: Number.parseInt(options.parallel, 10) || 2
+            parallel: Number.parseInt(options.parallel, 10) || 2,
+            model: options.model,
+            decisionModel: options.decisionModel ?? options.model
           })
         : null
       if (uiServer) {
@@ -218,9 +227,12 @@ agentCommand
           runtime: options.runtime,
           parallel: Number.parseInt(options.parallel, 10) || 2,
           decisionRuntime: options.decisionRuntime,
+          model: options.model,
+          decisionModel: options.decisionModel ?? options.model,
           maxWaves: Number.parseInt(options.maxWaves, 10) || 20,
           assumeDefaults: Boolean(options.assumeDefaults),
           dryRunPlan: Boolean(options.dryRunPlan),
+          strictPlanFirst: Boolean(options.strictPlanFirst),
           decisionResolver: uiServer?.resolveDecision
         })
         printSection("Agent Build", [
@@ -231,7 +243,7 @@ agentCommand
           `runtime: ${result.runtimeName}`,
           `decision runtime: ${result.decisionRuntimeName}`,
           `dry run: ${String(result.dryRun)}`,
-          `waves: ${result.waves.length}`,
+          `execution groups: ${result.waves.length}`,
           `next action: ${result.nextAction}`
         ])
         printList(
@@ -250,8 +262,8 @@ agentCommand
           { emptyText: "none" }
         )
         printList(
-          "Waves",
-          result.waves.map((wave, index) => `wave ${index + 1}: runs ${wave.runs.length}, next ready ${wave.nextReadyTaskIds.length}`),
+          "Execution Groups",
+          result.waves.map((wave, index) => `group ${index + 1}: runs ${wave.runs.length}, next ready ${wave.nextReadyTaskIds.length}`),
           { emptyText: "none" }
         )
         if (uiServer) {
@@ -333,6 +345,16 @@ agentSessionCommand
       { emptyText: "none" }
     )
     printList(
+      "Supervisor Handoffs",
+      result.supervisorHandoffs.map((handoff) => `${handoff.agentRunId}: ${handoff.summary}`),
+      { emptyText: "none" }
+    )
+    printList(
+      "Normalization Events",
+      result.normalizationEvents.map((event) => `${event.type}: ${event.summary}`),
+      { emptyText: "none" }
+    )
+    printList(
       "Build Events",
       result.buildEvents.map((event) => `${event.type}: ${event.summary}`),
       { emptyText: "none" }
@@ -367,6 +389,13 @@ agentCommand
         `run: xiezhi agent run ${task.id} --runtime opencode`
       ])
     }
+    for (const task of result.blockedTasks) {
+      printCard(`${shortenId(task.id)} · blocked · ${task.title}`, [
+        ...(task.blockedReasons && task.blockedReasons.length > 0
+          ? task.blockedReasons.map((reason) => `${shortenId(reason.taskId)}: ${reason.reason}`)
+          : [`blocked by: ${formatInlineList(task.blockedBy.map((id) => shortenId(id)), { emptyText: "unknown" })}`])
+      ])
+    }
   })
 
 agentCommand
@@ -374,20 +403,24 @@ agentCommand
   .description("Run one safe ready wave, optionally verifying/reviewing/promoting with agent decisions")
   .argument("[featureId]", "Optional feature id")
   .option("--runtime <runtime>", "Runtime to use", "opencode")
+  .option("--model <provider/model>", "Model to pass to OpenCode")
   .option("--parallel <count>", "Maximum parallel tasks", "2")
   .option("--auto", "Verify/review/promote after task execution")
   .option("--decision-runtime <runtime>", "Runtime for warning promotion decisions", "opencode")
+  .option("--decision-model <provider/model>", "Model for warning promotion decisions; defaults to --model")
   .action(
     async (
       featureId: string | undefined,
-      options: { runtime: RuntimeName; parallel: string; auto?: boolean; decisionRuntime: RuntimeName }
+      options: { runtime: RuntimeName; model?: string; parallel: string; auto?: boolean; decisionRuntime: RuntimeName; decisionModel?: string }
     ) => {
       const result = await runAgentRunReadyCommand(process.cwd(), {
         featureId,
         runtime: options.runtime,
         parallel: Number.parseInt(options.parallel, 10) || 2,
         auto: Boolean(options.auto),
-        decisionRuntime: options.decisionRuntime
+        decisionRuntime: options.decisionRuntime,
+        model: options.model,
+        decisionModel: options.decisionModel ?? options.model
       })
       printSection("Agent Run Ready", [
         `status: ${formatStatus(result.status)}`,
@@ -414,9 +447,10 @@ agentCommand
   .description("Ask an agent to turn user feedback into a follow-up AgentPlan")
   .argument("<feedback>", "Feedback to turn into a follow-up plan")
   .option("--runtime <runtime>", "Runtime to use", "opencode")
+  .option("--model <provider/model>", "Model to pass to OpenCode")
   .option("--feature <featureId>", "Optional source feature id")
-  .action(async (feedback: string, options: { runtime: RuntimeName; feature?: string }) => {
-    const result = await runAgentFeedbackCommand(process.cwd(), feedback, options.runtime, options.feature)
+  .action(async (feedback: string, options: { runtime: RuntimeName; model?: string; feature?: string }) => {
+    const result = await runAgentFeedbackCommand(process.cwd(), feedback, options.runtime, options.feature, options.model)
     printSection("Agent Feedback", [
       `status: ${formatStatus(result.status)}`,
       `agent session: ${result.agentSessionId}`,
@@ -432,8 +466,9 @@ agentCommand
   .description("Compile a task assignment, run the selected agent runtime, and capture a patch")
   .argument("<taskId>", "Task id")
   .option("--runtime <runtime>", "Runtime to use", "opencode")
-  .action(async (taskId: string, options: { runtime: RuntimeName }) => {
-    const result = await runAgentTaskCommand(process.cwd(), taskId, options.runtime)
+  .option("--model <provider/model>", "Model to pass to OpenCode")
+  .action(async (taskId: string, options: { runtime: RuntimeName; model?: string }) => {
+    const result = await runAgentTaskCommand(process.cwd(), taskId, options.runtime, options.model)
     printSection("Agent Run", [
       `status: ${formatStatus(result.status)}`,
       `agent session: ${result.agentSessionId ?? "none"}`,

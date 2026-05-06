@@ -24,6 +24,7 @@ export type RunTaskInput = {
   goal: string
   cwd: string
   runtime: RuntimeName
+  runtimeModel?: string | null
   allowedFiles: string[]
   forbiddenFiles: string[]
   acceptance: string[]

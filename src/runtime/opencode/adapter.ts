@@ -15,9 +15,15 @@ export class OpenCodeRuntime extends CliRuntime {
 
   protected buildCommand(input: RunTaskInput & { compiledPolicy?: CompiledExecutionPolicy }) {
     return {
-      args: ["run", "--format", "json"],
+      args: [
+        "run",
+        "--format",
+        "json",
+        "--dangerously-skip-permissions",
+        ...(input.runtimeModel ? ["--model", input.runtimeModel] : [])
+      ],
       prompt: input.compiledPolicy?.adapterHints.instructions.join("\n"),
-      approvalMode: "managed" as const
+      approvalMode: "bypass" as const
     }
   }
 }

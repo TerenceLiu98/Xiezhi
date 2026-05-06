@@ -16,15 +16,17 @@ In simpler terms:
 
 XieZhi is **not** trying to replace Claude Code, Codex, Cursor, OpenCode, Copilot, or other coding agents. It also does not act as the product planner or hardcoded orchestrator. Instead, it gives those agents a control layer.
 
-The main agent coordinates the work and emits structured plans. XieZhi validates those plans into DAGs, task contracts, and Intent IR. Subagents execute individual tasks. AST analysis verifies what the agents actually changed.
+The main agent coordinates the work. In the ordinary build flow it first runs a flexible supervisor intake, explores the repository, exposes decision points when user judgment is needed, and hands off a strategy when it is ready. XieZhi then asks the runtime to normalize that handoff into a strict AgentPlan DAG, task contracts, and Intent IR. Subagents execute individual tasks. AST analysis verifies what the agents actually changed. `--parallel` is a resource and safety limit: the main agent decides execution groups and subagent split; XieZhi rejects only dependency, file-scope, symbol-scope, or patch-safety violations.
 
 The ordinary user entrypoint is:
 
 ```bash
-xiezhi agent build "<goal>" --runtime opencode
+xiezhi agent build "<goal>" --runtime opencode --ui
 ```
 
-This command is a harness loop. The main agent may emit an AgentPlan, an AgentDecisionPoint, or a ProblemReport. XieZhi validates and records those structures, then executes only through ready queues, assignment contracts, patch verification, review, and promotion safety.
+This command is a harness loop. The OpenCode supervisor agent may first emit observations, AgentDecisionPoint, AgentProgressReport, AgentExecutionPlan, ProblemReport, or SupervisorHandoff. XieZhi records those structures, normalizes handoff output into AgentPlan v1, then executes only through ready queues, assignment contracts, patch verification, review, and promotion safety. The Web Graph UI shows supervisor exploration, product decisions, current phase, selected model, active subagents, progress evidence, and the DAG/AST state.
+
+For greenfield app goals, the supervisor should expose user decisions for feature scope, UI/interaction style, and validation/check policy, not only technology stack. Validation/check policy is a user tradeoff because it determines whether XieZhi should accept fast smoke evidence, require build/typecheck, or require build plus tests before promotion.
 
 ---
 

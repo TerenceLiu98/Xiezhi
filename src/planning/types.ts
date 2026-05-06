@@ -56,23 +56,37 @@ export const intentIrV2Schema = intentIrV1Schema.extend({
 export const intentIrSchema = z.union([intentIrV1Schema, intentIrV2Schema])
 export type IntentIr = z.infer<typeof intentIrSchema>
 
-export const agentPlanTaskSchema = z.object({
-  key: z.string().min(1),
-  title: z.string().min(1),
-  summary: z.string().min(1),
-  dependsOn: z.array(z.string()).default([]),
-  allowedFiles: z.array(z.string()).min(1),
-  forbiddenFiles: z.array(z.string()).default([".xiezhi/"]),
-  allowedSymbols: z.array(z.string()).default([]),
-  forbiddenSymbols: z.array(z.string()).default([]),
-  acceptance: z.array(z.string()).min(1),
-  checks: z.array(z.string()).default([]),
-  expectedOutputs: z.array(z.string()).default([]),
-  subagentRole: z.string().min(1).default("implementation"),
-  parallelGroup: z.string().min(1).nullable().default(null),
-  handoff: z.array(z.string()).default([]),
-  rationale: z.array(z.string()).default([])
-})
+export const agentPlanTaskSchema = z
+  .object({
+    key: z.string().min(1),
+    title: z.string().min(1),
+    summary: z.string().min(1),
+    dependsOn: z.array(z.string()).default([]),
+    allowedFiles: z.array(z.string()),
+    forbiddenFiles: z.array(z.string()).default([".xiezhi/"]),
+    allowedSymbols: z.array(z.string()).default([]),
+    forbiddenSymbols: z.array(z.string()).default([]),
+    acceptance: z.array(z.string()).min(1),
+    checks: z.array(z.string()).default([]),
+    expectedOutputs: z.array(z.string()).default([]),
+    subagentRole: z.string().min(1).default("implementation"),
+    parallelGroup: z.string().min(1).nullable().default(null),
+    handoff: z.array(z.string()).default([]),
+    rationale: z.array(z.string()).default([])
+  })
+  .superRefine((task, context) => {
+    if (task.allowedFiles.length > 0) {
+      return
+    }
+    const verificationOnly = ["test", "review"].includes(task.subagentRole) && task.checks.length > 0
+    if (!verificationOnly) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["allowedFiles"],
+        message: "allowedFiles must be non-empty unless this is a test/review task with declared checks"
+      })
+    }
+  })
 export type AgentPlanTask = z.infer<typeof agentPlanTaskSchema>
 
 export const agentPlanV1Schema = z.object({

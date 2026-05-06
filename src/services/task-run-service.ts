@@ -152,7 +152,7 @@ export class TaskRunService {
     return task
   }
 
-  async runTask(cwd: string, taskId: string, runtime: RuntimeName, options?: { agentRunId?: string }): Promise<TaskRunResult> {
+  async runTask(cwd: string, taskId: string, runtime: RuntimeName, options?: { agentRunId?: string; model?: string | null }): Promise<TaskRunResult> {
     const timeline: TaskRunResult["timeline"] = []
     const repositoryService = new RepositoryMetadataService(this.db)
     const repository = await repositoryService.refreshForCwd(cwd)
@@ -205,6 +205,7 @@ export class TaskRunService {
         goal: intent?.goal ?? taskId,
         cwd: worktree.path,
         runtime,
+        runtimeModel: options?.model ?? null,
         allowedFiles: compiledPolicy.policy.allowedFiles,
         forbiddenFiles: compiledPolicy.policy.forbiddenFiles,
         acceptance: intent?.acceptance ?? [],
@@ -476,7 +477,7 @@ export class TaskRunService {
       const dependencies = metadata.dependsOnTaskIds ?? []
       const dependenciesSatisfied = dependencies.every((dependencyId) => {
         const dependency = taskById.get(dependencyId)
-        return dependency && ["verified", "promoted"].includes(dependency.status)
+        return dependency?.status === "promoted"
       })
 
       if (!dependenciesSatisfied) {

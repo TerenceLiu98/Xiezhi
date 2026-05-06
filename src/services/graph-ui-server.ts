@@ -236,6 +236,17 @@ function html() {
       .status-note.blocked { border-color: rgba(224, 91, 91, .45); color: #ffb0b0; }
       .status-note.running { border-color: rgba(216, 166, 49, .45); color: #f0d79b; }
       .status-note.completed { border-color: rgba(63, 185, 107, .45); color: #9fe3b8; }
+      .subagents { display: grid; gap: 8px; }
+      .subagent {
+        display: grid;
+        gap: 4px;
+        padding: 9px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: var(--surface);
+      }
+      .subagent strong { font-size: 13px; }
+      .subagent small { color: var(--muted); line-height: 1.35; overflow-wrap: anywhere; }
       .action-box {
         display: grid;
         gap: 8px;
@@ -357,7 +368,9 @@ function html() {
         </div>
         <div class="top-stats">
           <div class="stat"><strong id="statusValue">idle</strong><span>status</span></div>
+          <div class="stat"><strong id="modelValue">default</strong><span>model</span></div>
           <div class="stat"><strong id="readyValue">0</strong><span>ready</span></div>
+          <div class="stat"><strong id="activeValue">0</strong><span>agents</span></div>
           <div class="stat"><strong id="blockedValue">0</strong><span>blocked</span></div>
           <div class="stat"><strong id="doneValue">0</strong><span>done</span></div>
         </div>
@@ -371,6 +384,10 @@ function html() {
         <div class="section">
           <div class="panel-title"><h2>Build Activity</h2><span id="operationStatus">idle</span></div>
           <div class="status-note" id="operation">No active web action.</div>
+          <h3>Supervisor</h3>
+          <div class="status-note" id="supervisor">Waiting for supervisor progress.</div>
+          <h3>Subagents</h3>
+          <div class="subagents" id="subagents"><div class="empty">No subagents declared yet.</div></div>
           <details class="debug-controls">
             <summary>Advanced/debug controls</summary>
             <div class="action-box">
@@ -426,6 +443,7 @@ function html() {
           { selector: 'node', style: { label: 'data(label)', 'font-size': 11, color: '#eef3f7', 'text-outline-width': 3, 'text-outline-color': '#0f1216', width: 56, height: 56, 'background-color': '#687484', 'border-width': 1.5, 'border-color': '#202833', 'text-wrap': 'wrap', 'text-max-width': 112 } },
           { selector: ':selected', style: { 'border-width': 4, 'border-color': '#f3f6f8', 'overlay-color': '#4b8dff', 'overlay-opacity': .12 } },
           { selector: 'node[type = "feature"]', style: { shape: 'round-rectangle', width: 118, height: 52, 'background-color': '#8b73ff' } },
+          { selector: 'node[type = "execution_group"]', style: { shape: 'round-rectangle', width: 100, height: 44, 'background-color': '#3f789d' } },
           { selector: 'node[type = "requirement"]', style: { shape: 'diamond', 'background-color': '#657284' } },
           { selector: 'node[type = "acceptance"]', style: { shape: 'tag', 'background-color': '#4e5c6f' } },
           { selector: '.ready', style: { 'background-color': '#4b8dff' } },
@@ -455,6 +473,7 @@ function html() {
       function statusText(state) {
         if (state.pendingDecision) return 'waiting decision';
         if (state.operation?.status === 'running') return 'agent action';
+        if (state.currentPhase) return state.currentPhase;
         if ((state.ready?.skippedTasks || []).some(task => String(task.reason || '').includes('status is running'))) return 'running';
         return state.session?.status ?? state.ready?.featureStatus ?? 'idle';
       }
@@ -479,6 +498,10 @@ function html() {
       function activityState(state) {
         if (state.pendingDecision) {
           return { kind: 'waiting', title: 'Waiting for your decision', detail: state.pendingDecision.decisionPoint?.problem || 'Choose an option in the decision dialog.' };
+        }
+        if (state.currentPhase && state.currentPhase !== 'idle') {
+          const phaseKind = state.currentPhase === 'completed' ? 'completed' : state.currentPhase === 'stalled' ? 'blocked' : ['decision', 'planning', 'intake'].includes(state.currentPhase) ? 'waiting' : 'running';
+          return { kind: phaseKind, title: phaseLabel(state.currentPhase), detail: state.currentSummary || 'Supervisor progress is available.' };
         }
         if (state.operation?.status === 'running') {
           return { kind: 'running', title: state.operation.action === 'run_ready' ? 'Running ready wave' : 'Agent is working', detail: state.operation.summary || 'Waiting for OpenCode.' };
@@ -511,7 +534,22 @@ function html() {
         if (ready > 0) return { kind: 'waiting', title: 'Ready to run', detail: ready + ' task(s) can run in the next wave.' };
         if (blocked > 0) return { kind: 'blocked', title: 'Blocked, waiting for recovery', detail: blocked + ' task(s) need agent recovery, user feedback, or dependency resolution.' };
         if (done > 0) return { kind: 'completed', title: 'Feature complete or no ready work', detail: 'No ready or blocked tasks are visible in the current feature.' };
-        return { kind: 'waiting', title: 'Waiting for plan', detail: 'No feature DAG has been loaded yet.' };
+        return { kind: 'waiting', title: 'Supervisor exploring', detail: 'OpenCode is exploring the goal, decisions, and subagent plan before XieZhi normalizes a DAG.' };
+      }
+      function phaseLabel(phase) {
+        return ({
+          intake: '规划前准备',
+          planning: '规划中',
+          decision: '等待决策',
+          building: '构建中',
+          verifying: '验收检查中',
+          reviewing: '自动 Review 中',
+          promoting: '落地 Patch 中',
+          recovering: '自动修复中',
+          completed: '已完成',
+          stalled: '需要 agent 重新规划',
+          running: '运行中'
+        })[phase] || phase;
       }
       function eventClass(event) {
         const value = event.type || '';
@@ -540,8 +578,12 @@ function html() {
               : item.status || item.reason || '';
           const extraClass = itemActivity?.kind === 'running' ? ' recovering' : '';
           const label = itemActivity ? '<em>' + esc(itemActivity.title) + '</em>' : '';
-          const blockedBy = kind === 'blocked' && item.blockedBy ? '<small>blocked by: ' + esc((item.blockedBy || []).map(shortId).join(', ') || 'unknown') + '</small>' : '';
-          return '<div class="queue-item ' + esc(kind + extraClass) + '" data-task-id="' + esc(item.id) + '"><strong>' + esc(item.title) + '</strong>' + label + '<small>' + esc(detail) + '</small>' + blockedBy + '</div>';
+          const blockedReasons = kind === 'blocked' && item.blockedReasons
+            ? '<small>' + esc((item.blockedReasons || []).map((reason) => shortId(reason.taskId) + ': ' + reason.reason).join(' | ') || 'waiting for dependency promotion') + '</small>'
+            : kind === 'blocked' && item.blockedBy
+              ? '<small>blocked by: ' + esc((item.blockedBy || []).map(shortId).join(', ') || 'unknown') + '</small>'
+              : '';
+          return '<div class="queue-item ' + esc(kind + extraClass) + '" data-task-id="' + esc(item.id) + '"><strong>' + esc(item.title) + '</strong>' + label + '<small>' + esc(detail) + '</small>' + blockedReasons + '</div>';
         }).join('');
         root.querySelectorAll('.queue-item').forEach(item => item.addEventListener('click', () => {
           const node = cy.nodes().filter(node => node.data('taskId') === item.dataset.taskId)[0];
@@ -602,11 +644,14 @@ function html() {
         const activity = activityState(state);
         document.getElementById('goal').textContent = state.session?.goal ?? 'Waiting for an agent build session.';
         document.getElementById('statusValue').textContent = statusText(state);
+        document.getElementById('modelValue').textContent = state.runtimeModel || 'default';
         const activityNode = document.getElementById('activity');
         activityNode.className = 'activity ' + activity.kind;
         document.getElementById('activityTitle').textContent = activity.title;
         document.getElementById('activityDetail').textContent = activity.detail;
         document.getElementById('readyValue').textContent = ready.length;
+        const activeSubagents = (state.subagents || []).filter(agent => ['planned', 'running', 'blocked'].includes(agent.status));
+        document.getElementById('activeValue').textContent = activeSubagents.length;
         document.getElementById('blockedValue').textContent = blocked.length + nonRunningSkipped.length;
         document.getElementById('doneValue').textContent = done.length;
         document.getElementById('operationStatus').textContent = state.operation?.status ?? 'idle';
@@ -614,11 +659,16 @@ function html() {
         const operationNode = document.getElementById('operation');
         operationNode.className = 'status-note operation ' + (operation?.status ?? 'idle');
         operationNode.textContent = operation?.summary || operation?.error || 'No active web action.';
+        document.getElementById('supervisor').textContent = (state.supervisorPhase ? phaseLabel(state.supervisorPhase) + ': ' : '') + (state.supervisorSummary || state.currentSummary || 'Waiting for supervisor progress.');
+        document.getElementById('subagents').innerHTML = (state.subagents || []).length
+          ? state.subagents.map(agent => '<div class="subagent"><strong>' + esc(agent.role) + ' · ' + esc(agent.status) + '</strong><small>' + esc(shortId(agent.taskId) + ' · ' + agent.summary) + '</small></div>').join('')
+          : '<div class="empty">No subagents declared yet.</div>';
         document.getElementById('readyCount').textContent = ready.length;
         document.getElementById('blockedCount').textContent = blocked.length + nonRunningSkipped.length;
         document.getElementById('doneCount').textContent = done.length;
         document.getElementById('session').textContent = 'session: ' + shortId(state.session?.id);
         document.getElementById('feature').textContent = 'feature: ' + (state.feature?.title ?? state.ready?.featureTitle ?? 'none');
+        document.getElementById('feature').title = 'runtime model: ' + (state.runtimeModel || 'default') + ' · decision model: ' + (state.decisionModel || state.runtimeModel || 'default');
         renderQueue('readyList', ready, 'ready', 'No ready tasks yet.', state);
         renderQueue('blockedList', runningSkipped.concat(blocked, nonRunningSkipped), 'blocked', 'No blocked tasks.', state);
         renderQueue('doneList', done, 'done', 'Nothing completed yet.', state);
@@ -736,6 +786,8 @@ export async function startGraphUiServer(input: {
   runtime?: RuntimeName
   decisionRuntime?: RuntimeName
   parallel?: number
+  model?: string | null
+  decisionModel?: string | null
 }): Promise<GraphUiServer> {
   let pendingDecision: PendingDecision | null = null
   let currentSessionId: string | null = null
@@ -752,13 +804,26 @@ export async function startGraphUiServer(input: {
   }
 
   const currentFeatureId = () => {
-    return getGraphState(input.cwd, { sessionId: currentSessionId ?? undefined, pendingDecision }).feature?.id ?? undefined
+    return getGraphState(input.cwd, {
+      sessionId: currentSessionId ?? undefined,
+      pendingDecision,
+      runtimeModel: input.model,
+      decisionModel: input.decisionModel ?? input.model
+    }).feature?.id ?? undefined
   }
+
+  const graphState = () =>
+    getGraphState(input.cwd, {
+      sessionId: currentSessionId ?? undefined,
+      pendingDecision,
+      runtimeModel: input.model,
+      decisionModel: input.decisionModel ?? input.model
+    })
 
   const runFeedbackAction = async (feedback: string, action: string) => {
     setOperation({ status: "running", action, summary: "Waiting for the main agent to return a recovery AgentPlan.", error: null })
     try {
-      const result = await runAgentFeedback(input.cwd, feedback, input.runtime ?? "opencode", currentFeatureId())
+      const result = await runAgentFeedback(input.cwd, feedback, input.runtime ?? "opencode", currentFeatureId(), input.model)
       currentSessionId = result.agentSessionId
       setOperation({
         status: "completed",
@@ -779,19 +844,21 @@ export async function startGraphUiServer(input: {
     if (!featureId) {
       throw new Error("No current feature is available to run.")
     }
-    setOperation({ status: "running", action: "run_ready", summary: "Running the next safe ready wave through OpenCode.", error: null })
+    setOperation({ status: "running", action: "run_ready", summary: "Running the next safe execution group through OpenCode.", error: null })
     try {
       const result = await runAgentReadyTasks(input.cwd, {
         featureId,
         runtime: input.runtime ?? "opencode",
         parallel: input.parallel ?? 2,
         auto: true,
-        decisionRuntime: input.decisionRuntime ?? input.runtime ?? "opencode"
+        decisionRuntime: input.decisionRuntime ?? input.runtime ?? "opencode",
+        model: input.model,
+        decisionModel: input.decisionModel ?? input.model
       })
       setOperation({
         status: "completed",
         action: "run_ready",
-        summary: `Ready wave completed: ${result.runs.length} run(s), ${result.nextReadyTaskIds.length} next ready task(s).`,
+        summary: `Execution group completed: ${result.runs.length} run(s), ${result.nextReadyTaskIds.length} next ready task(s).`,
         error: null
       })
       return result
@@ -817,7 +884,42 @@ export async function startGraphUiServer(input: {
         return
       }
       if (request.method === "GET" && url.pathname === "/api/state") {
-        sendJson(response, 200, { ...getGraphState(input.cwd, { sessionId: currentSessionId ?? undefined, pendingDecision }), operation })
+        sendJson(response, 200, { ...graphState(), operation })
+        return
+      }
+      if (request.method === "GET" && url.pathname === "/api/session") {
+        const state = graphState()
+        sendJson(response, 200, { session: state.session, feature: state.feature, ready: state.ready })
+        return
+      }
+      if (request.method === "GET" && url.pathname === "/api/progress") {
+        const state = graphState()
+        sendJson(response, 200, {
+          currentPhase: state.currentPhase,
+          currentSummary: state.currentSummary,
+          supervisorPhase: state.supervisorPhase,
+          supervisorSummary: state.supervisorSummary,
+          supervisorObservations: state.supervisorObservations,
+          supervisorHandoff: state.supervisorHandoff,
+          normalizationStatus: state.normalizationStatus,
+          runtimeError: state.runtimeError,
+          currentTaskId: state.currentTaskId,
+          currentExecutionGroup: state.currentExecutionGroup,
+          subagents: state.subagents,
+          progressReports: state.progressReports,
+          executionPlans: state.executionPlans,
+          runtimeModel: state.runtimeModel,
+          decisionModel: state.decisionModel
+        })
+        return
+      }
+      if (request.method === "GET" && url.pathname === "/api/decisions") {
+        const state = graphState()
+        sendJson(response, 200, {
+          pendingDecision: state.pendingDecision,
+          declared: state.events.filter((event) => event.type === "decision_point_declared"),
+          resolved: state.events.filter((event) => event.type === "decision_point_resolved")
+        })
         return
       }
       if (request.method === "GET" && url.pathname === "/api/graph") {

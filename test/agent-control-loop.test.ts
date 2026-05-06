@@ -100,12 +100,52 @@ async function withBuildFakeOpenCode(cwd: string, planOutput: string, fn: () => 
       "    const matches = [...input.matchAll(/\\\"patchId\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"/g)];",
       "    const patchId = matches.length ? matches[matches.length - 1][1] : 'unknown';",
       "    console.log(JSON.stringify({ version: 'v1', decisions: [{ patchId, decision: 'promote', rationale: ['Synthetic build warning accepted.'] }] }));",
-      "  } else if (input.includes('main coding agent being harnessed')) {",
+      "  } else if (input.includes('main coding agent being harnessed') || input.includes('OpenCode supervisor agent')) {",
       `    console.log(${JSON.stringify(planOutput)});`,
       "  } else {",
       "    if (fs.existsSync('src/helpers.ts')) fs.appendFileSync('src/helpers.ts', '\\nexport const buildLoopTouched = true\\n');",
       "    console.log(JSON.stringify({ type: 'complete', text: 'fake opencode edited one file' }));",
       "  }",
+      "});"
+    ].join("\n"),
+    "utf8"
+  )
+  await chmod(executable, 0o755)
+
+  const originalPath = process.env.PATH
+  const originalForceScaffold = process.env.XIEZHI_FORCE_SCAFFOLD_RUNTIMES
+  process.env.PATH = `${binDir}:${originalPath ?? ""}`
+  delete process.env.XIEZHI_FORCE_SCAFFOLD_RUNTIMES
+  clearRuntimeAvailabilityCache()
+  try {
+    await fn()
+  } finally {
+    process.env.PATH = originalPath
+    if (originalForceScaffold === undefined) {
+      delete process.env.XIEZHI_FORCE_SCAFFOLD_RUNTIMES
+    } else {
+      process.env.XIEZHI_FORCE_SCAFFOLD_RUNTIMES = originalForceScaffold
+    }
+    clearRuntimeAvailabilityCache()
+  }
+}
+
+async function withSupervisorHandoffFakeOpenCode(cwd: string, handoffOutput: string, planOutput: string, fn: () => Promise<void>) {
+  const binDir = path.join(cwd, ".xiezhi", "test-bin-supervisor-handoff")
+  await mkdir(binDir, { recursive: true })
+  const executable = path.join(binDir, "opencode")
+  await writeFile(
+    executable,
+    [
+      "#!/usr/bin/env node",
+      "let input = '';",
+      "process.stdin.on('data', chunk => input += chunk);",
+      "process.stdin.on('end', () => {",
+      "  if (input.includes('Convert the supervisor handoff into exactly one strict AgentPlan')) {",
+      `    console.log(${JSON.stringify(planOutput)});`,
+      "    return;",
+      "  }",
+      `  console.log(${JSON.stringify(handoffOutput)});`,
       "});"
     ].join("\n"),
     "utf8"
@@ -151,6 +191,69 @@ async function withSchemaRepairFakeOpenCode(cwd: string, planOutput: string, fn:
       "    return;",
       "  }",
       "  console.log(JSON.stringify({ version: 'v1', type: 'plan', tasks: [{ id: 'T1', scope: { files: ['src/app.ts'] }, steps: ['wrong shape'] }] }));",
+      "});"
+    ].join("\n"),
+    "utf8"
+  )
+  await chmod(executable, 0o755)
+
+  const originalPath = process.env.PATH
+  const originalForceScaffold = process.env.XIEZHI_FORCE_SCAFFOLD_RUNTIMES
+  process.env.PATH = `${binDir}:${originalPath ?? ""}`
+  delete process.env.XIEZHI_FORCE_SCAFFOLD_RUNTIMES
+  clearRuntimeAvailabilityCache()
+  try {
+    await fn()
+  } finally {
+    process.env.PATH = originalPath
+    if (originalForceScaffold === undefined) {
+      delete process.env.XIEZHI_FORCE_SCAFFOLD_RUNTIMES
+    } else {
+      process.env.XIEZHI_FORCE_SCAFFOLD_RUNTIMES = originalForceScaffold
+    }
+    clearRuntimeAvailabilityCache()
+  }
+}
+
+async function withScopeRevisionFakeOpenCode(cwd: string, input: { featureId: string; taskId: string }, fn: () => Promise<void>) {
+  const binDir = path.join(cwd, ".xiezhi", "test-bin-scope-revision")
+  await mkdir(binDir, { recursive: true })
+  const executable = path.join(binDir, "opencode")
+  await writeFile(
+    executable,
+    [
+      "#!/usr/bin/env node",
+      "import fs from 'node:fs';",
+      "let input = '';",
+      "process.stdin.on('data', chunk => input += chunk);",
+      "process.stdin.on('end', () => {",
+      "  if (input.includes('PromotionDecision')) {",
+      "    const matches = [...input.matchAll(/\\\"patchId\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"/g)];",
+      "    const patchId = matches.length ? matches[matches.length - 1][1] : 'unknown';",
+      "    console.log(JSON.stringify({ version: 'v1', decisions: [{ patchId, decision: 'promote', rationale: ['Scope revision warning accepted.'] }] }));",
+      "    return;",
+      "  }",
+      "  if (input.includes('XieZhi evidence summary') && input.includes('heldOrBlocked')) {",
+      "    const patchMatches = [...input.matchAll(/\\\"patchId\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"/g)];",
+      "    const patchId = patchMatches.length ? patchMatches[patchMatches.length - 1][1] : null;",
+      "    console.log(JSON.stringify({",
+      "      version: 'v1',",
+      "      type: 'scope_revision',",
+      `      featureId: ${JSON.stringify(input.featureId)},`,
+      `      taskId: ${JSON.stringify(input.taskId)},`,
+      "      patchId,",
+      "      reason: 'README.md is part of the declared user-facing scaffold evidence.',",
+      "      addAllowedFiles: ['README.md'],",
+      "      addForbiddenFiles: [],",
+      "      addChecks: [],",
+      "      addAcceptance: ['README documents the generated app scaffold.'],",
+      "      rationale: ['The main agent intentionally created README.md and is revising the task declaration.'],",
+      "      action: 'reverify_patch'",
+      "    }));",
+      "    return;",
+      "  }",
+      "  fs.appendFileSync('README.md', '\\nScope revision scaffold note\\n');",
+      "  console.log(JSON.stringify({ type: 'complete', text: 'fake opencode edited README' }));",
       "});"
     ].join("\n"),
     "utf8"
@@ -233,7 +336,7 @@ describe("agent control loop", () => {
     expect(result.runs.every((run) => run.promotion === "not_auto")).toBe(true)
   }, 30000)
 
-  it("treats draft tasks with verified dependencies as effectively ready", async () => {
+  it("keeps draft tasks blocked until dependencies are promoted", async () => {
     const cwd = await createTempTsRepo("xiezhi-agent-effective-ready-")
     await runInit(cwd)
     const plan = importRouterPlan(cwd)
@@ -243,6 +346,27 @@ describe("agent control loop", () => {
     const db = new Database(path.join(cwd, ".xiezhi", "xiezhi.db"))
     try {
       db.prepare("UPDATE tasks SET status = 'verified' WHERE id = ?").run(dependency.id)
+      db.prepare("UPDATE tasks SET status = 'draft' WHERE id = ?").run(dependent.id)
+    } finally {
+      db.close()
+    }
+
+    const ready = runAgentReadyCommand(cwd, plan.featureId)
+    expect(ready.readyTasks.map((task) => task.id)).not.toContain(dependent.id)
+    const blocked = ready.blockedTasks.find((task) => task.id === dependent.id)
+    expect(blocked?.blockedReasons[0]?.reason).toBe("dependency verified but not promoted")
+  })
+
+  it("unlocks draft tasks after dependencies are promoted", async () => {
+    const cwd = await createTempTsRepo("xiezhi-agent-promoted-ready-")
+    await runInit(cwd)
+    const plan = importRouterPlan(cwd)
+    const dependency = plan.tasks[0]!
+    const dependent = plan.tasks[1]!
+
+    const db = new Database(path.join(cwd, ".xiezhi", "xiezhi.db"))
+    try {
+      db.prepare("UPDATE tasks SET status = 'promoted' WHERE id = ?").run(dependency.id)
       db.prepare("UPDATE tasks SET status = 'draft' WHERE id = ?").run(dependent.id)
     } finally {
       db.close()
@@ -294,6 +418,44 @@ describe("agent control loop", () => {
     )
   }, 20000)
 
+  it("runs agent-declared task checks before auto verification", async () => {
+    const cwd = await createTempTsRepo("xiezhi-agent-declared-checks-")
+    await runInit(cwd)
+    const command = 'node -e "process.exit(0)"'
+    const plan = importRouterPlan(cwd, {
+      tasks: [
+        {
+          ...routerAgentPlan().tasks[0]!,
+          dependsOn: [],
+          allowedFiles: ["src/helpers.ts"],
+          allowedSymbols: [],
+          checks: [command]
+        }
+      ]
+    })
+
+    await withBuildFakeOpenCode(cwd, JSON.stringify(routerAgentPlan()), async () => {
+      const result = await runAgentRunReadyCommand(cwd, {
+        featureId: plan.featureId,
+        runtime: "opencode",
+        parallel: 1,
+        auto: true,
+        decisionRuntime: "opencode"
+      })
+
+      const patchId = result.runs[0]!.patchId
+      const db = new Database(path.join(cwd, ".xiezhi", "xiezhi.db"))
+      try {
+        const commandLog = db.prepare("SELECT command, exit_code FROM command_logs WHERE patch_id = ? AND command = ?").get(patchId, command) as
+          | { command: string; exit_code: number }
+          | undefined
+        expect(commandLog).toEqual({ command, exit_code: 0 })
+      } finally {
+        db.close()
+      }
+    })
+  }, 30000)
+
   it("build dry-run imports an agent plan without executing waves", async () => {
     const cwd = await createTempTsRepo("xiezhi-agent-build-dry-")
     await runInit(cwd)
@@ -317,6 +479,56 @@ describe("agent control loop", () => {
       expect(result.waves).toHaveLength(0)
       const session = runAgentSessionShowCommand(cwd, result.agentSessionId)
       expect(session.session.planSummary).toMatchObject({ assumptions: plan.requirements })
+    })
+  }, 15000)
+
+  it("runs flexible supervisor intake then normalizes handoff into an AgentPlan", async () => {
+    const cwd = await createTempTsRepo("xiezhi-agent-supervisor-handoff-")
+    await runInit(cwd)
+    const plan = routerAgentPlan({
+      title: "Pomodoro app normalized plan",
+      goal: "build a pomodoro app",
+      tasks: [{ ...routerAgentPlan().tasks[0]!, checks: [], allowedSymbols: [] }]
+    })
+    const handoff = {
+      version: "v1",
+      type: "supervisor_handoff",
+      goal: "build a pomodoro app",
+      summary: "Supervisor inspected the empty project and is ready to normalize a bounded DAG.",
+      assumptions: ["Use a local web app shell for the MVP."],
+      resolvedDecisions: ["Default to local-first UI for smoke testing."],
+      subagentPlan: [
+        {
+          id: "impl-1",
+          role: "implementation",
+          summary: "Create the timer shell and core state.",
+          suggestedScope: ["src/**", "package.json"]
+        }
+      ],
+      normalizationInstructions: ["Create one bounded implementation task with build checks."],
+      readyToNormalize: true
+    }
+    const handoffOutput = [
+      JSON.stringify({ type: "text", part: { type: "text", text: "I inspected the repository and found an empty app baseline." } }),
+      JSON.stringify({ type: "text", part: { type: "text", text: JSON.stringify(handoff) } })
+    ].join("\n")
+
+    await withSupervisorHandoffFakeOpenCode(cwd, handoffOutput, JSON.stringify(plan), async () => {
+      const result = await runAgentBuildCommand(cwd, {
+        goal: "build a pomodoro app",
+        runtime: "opencode",
+        parallel: 2,
+        decisionRuntime: "opencode",
+        maxWaves: 20,
+        assumeDefaults: false,
+        dryRunPlan: true
+      })
+
+      expect(result.status).toBe("planned")
+      expect(result.featureId).toBeTruthy()
+      const session = runAgentSessionShowCommand(cwd, result.agentSessionId)
+      expect(session.supervisorHandoffs[0]?.summary).toContain("ready to normalize")
+      expect(session.normalizationEvents.some((event) => event.type === "normalization_completed")).toBe(true)
     })
   }, 15000)
 
@@ -355,6 +567,43 @@ describe("agent control loop", () => {
     })
   }, 15000)
 
+  it("extracts decision points from OpenCode JSON event text parts", async () => {
+    const cwd = await createTempTsRepo("xiezhi-agent-build-event-decision-")
+    await runInit(cwd)
+    const decisionPoint = {
+      version: "v1",
+      type: "decision_point",
+      goal: "build a pomodoro app",
+      problem: "Choose the app platform.",
+      impact: "The platform determines the implementation plan.",
+      recommendedOptionId: "electron",
+      options: [
+        { id: "electron", label: "Electron", tradeoff: "Desktop app packaging.", planDelta: "Plan Electron tasks." },
+        { id: "web", label: "Web", tradeoff: "Browser-only app.", planDelta: "Plan Vite tasks." }
+      ],
+      defaultIfUnanswered: "electron"
+    }
+    const opencodeEventOutput = [
+      JSON.stringify({ type: "step_start", part: { type: "step-start" } }),
+      JSON.stringify({ type: "text", part: { type: "text", text: JSON.stringify(decisionPoint) } })
+    ].join("\n")
+
+    await withFakeOpenCode(cwd, opencodeEventOutput, async () => {
+      const result = await runAgentBuildCommand(cwd, {
+        goal: "build a pomodoro app",
+        runtime: "opencode",
+        parallel: 2,
+        decisionRuntime: "opencode",
+        maxWaves: 20,
+        assumeDefaults: false,
+        dryRunPlan: false
+      })
+
+      expect(result.status).toBe("waiting_for_decision")
+      expect(result.decisionPoints[0]?.problem).toContain("platform")
+    })
+  }, 15000)
+
   it("records problem reports from the main agent", async () => {
     const cwd = await createTempTsRepo("xiezhi-agent-build-problem-")
     await runInit(cwd)
@@ -385,6 +634,95 @@ describe("agent control loop", () => {
     })
   }, 15000)
 
+  it("reports OpenCode runtime model errors before build-loop schema validation", async () => {
+    const cwd = await createTempTsRepo("xiezhi-agent-build-model-error-")
+    await runInit(cwd)
+    const runtimeError = {
+      type: "error",
+      error: {
+        name: "UnknownError",
+        data: {
+          message: "Model not found: xiaomi/mimo-v2.5-pro. Did you mean: xiaomi-token-plan-ams?"
+        }
+      }
+    }
+
+    await withFakeOpenCode(cwd, JSON.stringify(runtimeError), async () => {
+      await expect(
+        runAgentBuildCommand(cwd, {
+          goal: "build a pomodoro app",
+          runtime: "opencode",
+          parallel: 2,
+          decisionRuntime: "opencode",
+          maxWaves: 20,
+          assumeDefaults: false,
+          dryRunPlan: false
+        })
+      ).rejects.toMatchObject({
+        message: expect.stringContaining("Agent build runtime failed: Model not found")
+      })
+    })
+  }, 15000)
+
+  it("records supervisor progress and execution plan events from build output", async () => {
+    const cwd = await createTempTsRepo("xiezhi-agent-build-progress-")
+    await runInit(cwd)
+    const plan = routerAgentPlan({
+      tasks: [{ ...routerAgentPlan().tasks[0]!, checks: [], allowedSymbols: [], parallelGroup: "core", subagentRole: "implementation" }]
+    })
+    const progress = {
+      version: "v1",
+      type: "progress_report",
+      phase: "planning",
+      summary: "Supervisor is splitting the pomodoro app into scoped subagent work.",
+      currentTaskId: null,
+      executionGroup: "core",
+      subagents: [
+        {
+          id: "impl-1",
+          role: "implementation",
+          taskId: null,
+          status: "planned",
+          summary: "Will implement timer core."
+        }
+      ],
+      risks: [],
+      nextAction: "Import the AgentPlan and run the first safe execution group."
+    }
+    const executionPlan = {
+      version: "v1",
+      type: "execution_plan",
+      executionGroups: [
+        {
+          id: "core",
+          summary: "Build the core timer flow.",
+          tasks: [plan.tasks[0]!.key],
+          parallelism: 1,
+          subagents: [{ role: "implementation", taskKey: plan.tasks[0]!.key, reason: "Timer core is isolated." }]
+        }
+      ]
+    }
+    const output = [JSON.stringify(progress), JSON.stringify(executionPlan), JSON.stringify(plan)].join("\n")
+
+    await withFakeOpenCode(cwd, output, async () => {
+      const result = await runAgentBuildCommand(cwd, {
+        goal: "build a pomodoro app",
+        runtime: "opencode",
+        parallel: 2,
+        decisionRuntime: "opencode",
+        maxWaves: 20,
+        assumeDefaults: false,
+        dryRunPlan: true,
+        strictPlanFirst: true
+      })
+
+      expect(result.status).toBe("planned")
+      const session = runAgentSessionShowCommand(cwd, result.agentSessionId)
+      expect(session.progressReports.some((report) => report.summary.includes("Supervisor is splitting"))).toBe(true)
+      expect(session.executionPlans[0]?.summary).toContain("1 execution group")
+    })
+  }, 15000)
+
   it("repairs malformed build-loop output through the main agent", async () => {
     const cwd = await createTempTsRepo("xiezhi-agent-build-repair-")
     await runInit(cwd)
@@ -400,7 +738,8 @@ describe("agent control loop", () => {
         decisionRuntime: "opencode",
         maxWaves: 20,
         assumeDefaults: false,
-        dryRunPlan: true
+        dryRunPlan: true,
+        strictPlanFirst: true
       })
 
       expect(result.status).toBe("planned")
@@ -442,6 +781,59 @@ describe("agent control loop", () => {
       const session = runAgentSessionShowCommand(cwd, result.agentSessionId)
       expect(session.buildEvents.some((event) => event.type === "build_wave_started")).toBe(true)
       expect(session.buildEvents.some((event) => event.type === "build_wave_completed")).toBe(true)
+    })
+  }, 30000)
+
+  it("lets the main agent recover out-of-scope patches with AgentScopeRevision", async () => {
+    const cwd = await createTempTsRepo("xiezhi-agent-scope-revision-")
+    await runInit(cwd)
+    const plan = importRouterPlan(cwd, {
+      tasks: [
+        {
+          ...routerAgentPlan().tasks[0]!,
+          dependsOn: [],
+          allowedFiles: ["src/helpers.ts"],
+          allowedSymbols: [],
+          checks: []
+        }
+      ]
+    })
+    const task = plan.tasks[0]!
+    const sqlite = new Database(path.join(cwd, ".xiezhi", "xiezhi.db"))
+    try {
+      const timestamp = new Date().toISOString()
+      sqlite
+        .prepare(
+          "INSERT INTO agent_sessions (id, goal, feature_id, planning_runtime_name, raw_agent_output, plan_summary_json, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        )
+        .run("scope-revision-session", "build a pomodoro app", plan.featureId, "opencode", "{}", "{}", "running", timestamp, timestamp)
+    } finally {
+      sqlite.close()
+    }
+
+    await withScopeRevisionFakeOpenCode(cwd, { featureId: plan.featureId, taskId: task.id }, async () => {
+      const result = await runAgentBuildCommand(cwd, {
+        goal: "build a pomodoro app",
+        runtime: "opencode",
+        parallel: 1,
+        decisionRuntime: "opencode",
+        maxWaves: 2,
+        assumeDefaults: false,
+        dryRunPlan: false
+      })
+
+      expect(result.status).toBe("completed")
+      const db = new Database(path.join(cwd, ".xiezhi", "xiezhi.db"))
+      try {
+        const taskRow = db.prepare("SELECT status, intent_ir_json FROM tasks WHERE id = ?").get(task.id) as {
+          status: string
+          intent_ir_json: string
+        }
+        expect(taskRow.status).toBe("promoted")
+        expect(JSON.parse(taskRow.intent_ir_json).allowedFiles).toContain("README.md")
+      } finally {
+        db.close()
+      }
     })
   }, 30000)
 

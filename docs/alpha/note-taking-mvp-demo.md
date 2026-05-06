@@ -47,13 +47,13 @@ From `demo/notetaking`:
 
 ```text
 node ../../dist/cli.js init
-node ../../dist/cli.js agent build "build an Electron note-taking app with local notes, search, tags, and a polished editor" --runtime opencode --parallel 2 --decision-runtime opencode
+node ../../dist/cli.js agent build "build an Electron note-taking app with local notes, search, tags, and a polished editor" --runtime opencode --parallel 2 --decision-runtime opencode --ui
 node ../../dist/cli.js agent session show
 npm test
 npm run build
 ```
 
-`agent build` is the preferred user-level flow. The main agent can make reasonable assumptions, expose a structured decision point, or report a problem with a proposed solution. XieZhi records those declarations and then executes only through DAG/AST/patch evidence.
+`agent build` is the preferred user-level flow. The main agent first runs a flexible supervisor intake: it can explore the empty demo repo, expose a structured decision point, report progress, outline subagent work, or report a problem with a proposed solution. When it is ready, it emits a supervisor handoff; XieZhi normalizes that handoff into AgentPlan DAG state and then executes only through DAG/AST/patch evidence.
 
 For debugging the loop one step at a time:
 
@@ -80,7 +80,7 @@ For ready waves that have non-overlapping scope, the agent may use:
 node ../../dist/cli.js agent run-ready --runtime opencode --parallel 2 --auto --decision-runtime opencode
 ```
 
-The OpenCode planning run must return strict AgentPlan JSON. XieZhi validates that JSON into a feature DAG, task DAG, Intent IR v2, assignment contracts, and patch evidence.
+The lower-level `agent plan` command still requires strict AgentPlan JSON. The higher-level `agent build` command is supervisor-first, then normalizes into the same feature DAG, task DAG, Intent IR v2, assignment contracts, and patch evidence.
 
 The generated app files live in the XieZhi task worktree until the patch is promoted into the `demo/notetaking` repository. MVP acceptance requires the app source to exist in the main demo repository and the Electron app to start from that directory.
 
